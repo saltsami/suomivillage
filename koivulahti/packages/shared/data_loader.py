@@ -1,4 +1,5 @@
 import json
+import re
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Dict, List
@@ -40,7 +41,9 @@ def get_event_types() -> List[EventTypeItem]:
 
 def get_day1_seed_events() -> List[Dict[str, Any]]:
     catalog = load_event_types_catalog()
-    events = catalog.get("day1_seed_scenario", {}).get("events", [])
+    scenario = catalog.get("day1_seed_scenario", {}) or {}
+    base_date = scenario.get("date_local")
+    events = scenario.get("events", [])
     normalized: List[Dict[str, Any]] = []
     for e in events:
         item = dict(e)
@@ -48,6 +51,20 @@ def get_day1_seed_events() -> List[Dict[str, Any]]:
             item["type"] = item["e"]
         if "severity" not in item and "seveity" in item:
             item["severity"] = item["seveity"]
+        ts_local = item.get("ts_local")
+        if ts_local and base_date:
+            # If ts_local is time-only, prepend scenario date.
+            if re.match(r"^\d{2}:\d{2}:\d{2}$", ts_local):
+                item["ts_local"] = f"{base_date}T{ts_local}"
+            # If ts_local is malformed like "YYYY-HH:MM:SS", treat as year + time.
+            elif re.match(r"^\d{4}-\d{2}:\d{2}:\d{2}$", ts_local):
+                year, time_part = ts_local.split("-", 1)
+                date_part = base_date
+                if re.match(r"^\d{4}-\d{2}-\d{2}$", base_date):
+                    date_part = f"{year}{base_date[4:]}"
+                item["ts_local"] = f"{date_part}T{time_part}"
+            # If space-separated datetime, normalize to ISO.
+            elif " " in ts_local and "T" not in ts_local:
+                item["ts_local"] = ts_local.replace(" ", "T")
         normalized.append(item)
     return normalized
-

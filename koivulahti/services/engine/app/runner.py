@@ -28,7 +28,7 @@ async def init_services() -> None:
 
 async def close_services() -> None:
     if redis_client:
-        await redis_client.close()
+        await redis_client.aclose()
     if db_pool:
         await db_pool.close()
 
@@ -53,7 +53,7 @@ async def seed_db_if_empty() -> None:
         )
         await conn.executemany(
             "INSERT INTO npc_profiles (npc_id, profile) VALUES ($1, $2::jsonb) ON CONFLICT DO NOTHING",
-            [(n.id, json.dumps(n.dict())) for n in npcs],
+            [(n.id, json.dumps(n.model_dump())) for n in npcs],
         )
         await conn.executemany(
             """
@@ -112,10 +112,13 @@ def thresholds_by_channel() -> Dict[str, float]:
 async def insert_event(event: Dict[str, Any]) -> None:
     assert db_pool is not None
     ts_local_str = event.get("ts_local")
+    sim_ts = datetime.now(tz=timezone.utc)
     if ts_local_str:
-        sim_ts = datetime.fromisoformat(ts_local_str).replace(tzinfo=timezone.utc)
-    else:
-        sim_ts = datetime.now(tz=timezone.utc)
+        try:
+            parsed = datetime.fromisoformat(ts_local_str.replace("Z", "+00:00"))
+            sim_ts = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            sim_ts = datetime.now(tz=timezone.utc)
 
     async with db_pool.acquire() as conn:
         await conn.execute(

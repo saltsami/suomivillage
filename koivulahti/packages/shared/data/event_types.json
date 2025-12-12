@@ -820,7 +820,7 @@
         "type": "WORK_SHIFT_START",
         "category": "work",
         "description": "Työvuoro alkaa.",
-        "payload_schema": { "npc_id"STRING", "place_id": "STRING", "job": "STRING" },
+        "payload_schema": { "npc_id": "STRING", "place_id": "STRING", "job": "STRING" },
         "effects": { "memory_importance_base": 0.12, "relationship_deltas": [], "reputation_delta": 0.0 },
         "render": { "default_channels": [] }
       },
@@ -829,7 +829,7 @@
         "category": "work",
         "description": "Työvuoro päättyy.",
         "payload_schema": { "npc_id": "STRING", "place_id": "STRING", "job": "STRING", "mood": "STRING" },
-        "effects": { "memory_importance_base": 0.12, "relationship_deltas": ["reputation_delta": 0.0 },
+        "effects": { "memory_importance_base": 0.12, "relationship_deltas": [], "reputation_delta": 0.0 },
         "render": { "default_channels": [] }
       },
       {
@@ -847,7 +847,7 @@
         "payload_schema": { "who": "STRING", "place_id": "STRING", "mistake": "STRING", "affected": "ARRAY_STRING", "public": "BOOLEAN" },
         "effects": { "memory_importance_base": 0.6, "relationship_deltas": [{ "trust": -8, "respect": -6, "grievance": "work_mistake" }], "reputation_delta": -0.02 },
         "render": { "default_channels": ["CHAT", "NEWS"] }
-      }
+      },
 
       {
         "type": "HOBBY_SESSION",
@@ -859,7 +859,7 @@
       },
       {
         "type": "HOBBY_COMPETITION",
-        "category": "hobb,
+        "category": "hobby",
         "description": "Kisa/vertailu (kuka jaksoi, kuka sai parhaan saaliin).",
         "payload_schema": { "a": "STRING", "b": "STRING", "domain": "STRING", "winner": "STRING", "public": "BOOLEAN" },
         "effects": { "memory_importance_base": 0.55, "relationship_deltas": [{ "respect": 6, "jealousy": 8 }], "reputation_delta": 0.02 },
@@ -904,7 +904,7 @@
         "category": "conflict",
         "description": "Livestä irrotetaan klippi/väärinymmärrys (fiktiivinen).",
         "payload_schema": { "host": "STRING", "clip_claim": "STRING", "target": "STRING", "public": "BOOLEAN" },
-        "effects": { "memory_importance_base": 0.8, "relationship_deltas": [{ "trust": -12, "respect": -12, "grievance"isrepresented" }], "reputation_delta": -0.03 },
+        "effects": { "memory_importance_base": 0.8, "relationship_deltas": [{ "trust": -12, "respect": -12, "grievance": "misrepresented" }], "reputation_delta": -0.03 },
         "render": { "default_channels": ["NEWS", "CHAT"] }
       },
 
@@ -1004,7 +1004,7 @@
         "type": "FIRE_ALARM_FALSE",
         "category": "incident",
         "description": "Palohälytys (väärä).",
-    load_schema": { "place_id": "STRING", "trigger": "STRING", "witnesses": "ARRAY_STRING" },
+        "payload_schema": { "place_id": "STRING", "trigger": "STRING", "witnesses": "ARRAY_STRING" },
         "effects": { "memory_importance_base": 0.65, "relationship_deltas": [], "reputation_delta": 0.0 },
         "render": { "default_channels": ["NEWS"] }
       },
@@ -1040,7 +1040,7 @@
         "description": "Keräyksestä syntyy kinaa (läpinäkyvyys, epäilyt).",
         "payload_schema": { "accuser": "STRING", "organizer": "STRING", "claim": "STRING", "public": "BOOLEAN" },
         "effects": { "memory_importance_base": 0.8, "relationship_deltas": [{ "trust": -10, "respect": -8, "grievance": "fundraiser_drama" }], "reputation_delta": -0.02 },
-        "render": { "default_channelsNEWS"] }
+        "render": { "default_channels": ["NEWS"] }
       },
 
       {
@@ -1063,7 +1063,7 @@
         "type": "NEWS_PUBLISHED",
         "category": "media",
         "description": "Uutispäivitys julkaistaan.",
-        "payload_schema": { tor": "STRING", "headline": "STRING", "body": "STRING", "source_event_ids": "ARRAY_STRING", "verified": "BOOLEAN" },
+        "payload_schema": { "author": "STRING", "headline": "STRING", "body": "STRING", "source_event_ids": "ARRAY_STRING", "verified": "BOOLEAN" },
         "effects": { "memory_importance_base": 0.3, "relationship_deltas": [], "reputation_delta": 0.0 },
         "render": { "default_channels": [] }
       }
@@ -1130,7 +1130,7 @@
         "id": "evt_d1_001",
         "ts_local": "2025-12-12T08:10:00",
         "place_id": "place_kylatalo",
-     e": "TALKOOS_ANNOUNCED",
+        "type": "TALKOOS_ANNOUNCED",
         "actors": ["npc_jari"],
         "targets": [],
         "publicness": 0.9,
@@ -1204,7 +1204,7 @@
         "payload": { "from": "npc_osku", "to": "npc_sanni", "need": "pieni laina tai kahvi velaksi (tänään tiukka)", "urgency": 0.4 }
       },
       {
-        ""evt_d1_008",
+        "id": "evt_d1_008",
         "ts_local": "2025-12-12T11:12:00",
         "place_id": "place_kahvio",
         "type": "WORK_MISTAKE",
@@ -1276,7 +1276,7 @@
         }
       },
       {
-    id": "evt_d1_014",
+        "id": "evt_d1_014",
         "ts_local": "2025-12-12T14:00:00",
         "place_id": "place_huoltsikka",
         "type": "PARKING_DISPUTE",

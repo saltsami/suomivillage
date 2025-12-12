@@ -80,12 +80,12 @@ class RelationshipEdge(BaseModel):
     debts: List[Dict[str, Any]] = Field(default_factory=list)
 
     class Config:
-        allow_population_by_field_name = True
+        validate_by_name = True
 
 
 class EventTypeItem(BaseModel):
     type: str
-    category: str
+    category: str = "misc"
     description: Optional[str] = None
     payload_schema: Dict[str, Any] = Field(default_factory=dict)
     effects: Dict[str, Any] = Field(default_factory=dict)
