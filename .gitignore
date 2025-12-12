@@ -1,3 +1,12 @@
 .env
 koivulahti/infra/.env
 *.gguf
+
+# Python
+venv/
+koivulahti/venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python

@@ -68,3 +68,8 @@ def get_day1_seed_events() -> List[Dict[str, Any]]:
                 item["ts_local"] = ts_local.replace(" ", "T")
         normalized.append(item)
     return normalized
+
+
+def get_impact_scoring_config() -> Dict[str, Any]:
+    catalog = load_event_types_catalog()
+    return catalog.get("impact_scoring", {}) or {}

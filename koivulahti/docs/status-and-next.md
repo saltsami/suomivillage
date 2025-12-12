@@ -6,7 +6,7 @@ Updated: 2025-12-12
 
 - Repo scaffold per `repo_structure.txt`.
 - Infra
-  - `infra/docker-compose.yml` builds all services from repo root.
+  - `infra/docker-compose.yml` builds all services from repo root, with CPU/GPU llama.cpp profiles.
   - `infra/.env.example` includes required env vars.
 - Shared packages
   - `packages/shared/settings.py`, `db.py`, `schemas.py`
@@ -45,9 +45,11 @@ From `infra/`:
 
 Engine
 - Deterministic sim clock + tick scheduler beyond Day 1.
+- Proper impact scoring (novelty/conflict/status/cascade) per catalog.
 - Apply event `effects` to relationships/memory/reputation.
+- Daily NEWS digest event (1x sim day) + enqueue NEWS job.
+- Nightly memory summaries per NPC + memory compaction.
 - World snapshots + replay.
-- Proper impact scoring (novelty/conflict/status/cascade).
 
 Agents
 - Decision loop producing `action_schema` JSON using LLM.
@@ -55,18 +57,45 @@ Agents
 - Director/injectors after Day 1.
 
 Content
-- Moderation + rate limits enforced in gateway/workers.
-- Feed/chat/news prompt templates from catalog wired in.
+- Feed/chat/news prompt templates from catalog wired in (not just summary).
+- Moderation + rate limits enforced in gateway/workers before persisting.
+- FEED + CHAT rendering from the same event when both channels are triggered.
 
 LLM gateway
-- Real llama.cpp adapter.
-- Strict schema validation + JSON repair + caching.
+- Real llama.cpp adapter using `LLM_SERVER_URL`.
+- Strict schema validation + JSON repair + caching (single adapter boundary).
 
 API/Admin/UI
 - Admin endpoints that control run/seed/replay.
 - Read-only UI (later milestone).
 
-## Suggested next session plan
+## Next milestone (Demo‑ready) roadmap
+
+Goal: “live Day 1 → continuous sim” demo with believable FEED/CHAT/NEWS.
+
+1. Wire prompt templates
+   - Load `feed_prompt`, `chat_prompt`, `news_prompt` from catalog.
+   - Workers/gateway build prompts consistently per channel.
+2. Implement real LLM gateway
+   - Add llama.cpp adapter + schema validation/repair + caching.
+   - Keep all backend quirks inside gateway.
+3. Enforce moderation + rate limits
+   - Apply `moderation_rules` and `rate_limits` from catalog before insert.
+4. Extend engine past Day 1
+   - Deterministic sim clock + seeded tick loop.
+   - Generate next events/actions via scheduler/injectors.
+5. Daily NEWS digest
+   - Once per sim day, pick top events by impact and publish a NEWS_PUBLISHED event.
+6. Nightly memory summary
+   - Per NPC, write 1 summary memory per sim day; compact older episodic memories.
+7. Replay baseline
+   - Persist `world_snapshots` at day boundaries and add replay script/endpoint.
+
+## Milestone after demo (Agent Decision MVP)
+
+1. NPC perception/retrieval loop (event‑triggered + scheduled windows).
+2. LLM outputs **action JSON only** per `action_schema`.
+3. Engine validates rules, emits resulting events, and updates state deterministically.
 
 1. Wire catalog prompt templates into workers/gateway.
 2. Implement gateway llama.cpp adapter + schema validation/repair.
