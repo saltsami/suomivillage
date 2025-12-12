@@ -413,15 +413,98 @@ async def fetch_latest_sim_ts() -> datetime:
     return datetime.now(tz=timezone.utc)
 
 
+ROUTINE_EVENT_TEMPLATES = [
+    {
+        "type": "LOCATION_VISIT",
+        "place_types": ["sauna", "beach"],
+        "publicness": 0.3,
+        "severity": 0.0,
+    },
+    {
+        "type": "SMALL_TALK",
+        "place_types": ["cafe", "kahvio"],
+        "publicness": 0.5,
+        "severity": 0.0,
+    },
+    {
+        "type": "CUSTOMER_INTERACTION",
+        "place_types": ["shop", "store", "kahvio"],
+        "publicness": 0.4,
+        "severity": 0.0,
+    },
+]
+
+
+async def generate_routine_event(
+    tick_index: int,
+    sim_ts: datetime,
+    rng: random.Random,
+) -> Optional[Dict[str, Any]]:
+    """Generate a routine event deterministically based on tick index."""
+    # Generate 1 event every ~10 ticks (adjustable)
+    if tick_index % 10 != 0:
+        return None
+
+    npcs = get_npc_profiles()
+    places = get_places()
+    if not npcs or not places:
+        return None
+
+    # Select NPC deterministically using tick index
+    npc_idx = (tick_index // 10) % len(npcs)
+    npc = npcs[npc_idx]
+
+    # Select routine template using RNG
+    template = rng.choice(ROUTINE_EVENT_TEMPLATES)
+
+    # Find a place matching the template's place_types
+    matching_places = [
+        p for p in places
+        if any(pt in p.type.lower() for pt in template["place_types"])
+    ]
+    if not matching_places:
+        matching_places = places
+
+    place = rng.choice(matching_places)
+
+    # Generate event ID
+    event_id = f"evt_routine_{tick_index}_{npc.id}"
+
+    return {
+        "id": event_id,
+        "type": template["type"],
+        "place_id": place.id,
+        "actors": [npc.id],
+        "targets": [],
+        "publicness": template["publicness"],
+        "severity": template["severity"],
+        "ts_local": sim_ts.isoformat(),
+        "payload": {
+            "source": "routine_injector",
+            "tick": tick_index,
+        },
+    }
+
+
 async def tick_once(
     sim_ts: datetime,
     tick_index: int,
     rng: random.Random,
     event_types: Dict[str, EventTypeItem],
 ) -> datetime:
-    # Placeholder for future deterministic injectors/actions.
-    # Keep the RNG threaded through for determinism once used.
-    _ = (rng, event_types)
+    # Generate routine events for post-Day1 simulation
+    if tick_index > 0:
+        routine_event = await generate_routine_event(tick_index, sim_ts, rng)
+        if routine_event:
+            inserted, event_sim_ts, impact, event_type = await process_event(
+                routine_event, event_types
+            )
+            if inserted:
+                await enqueue_render_jobs(routine_event, event_sim_ts, impact, event_type)
+                print(
+                    f"[engine] injected {routine_event['id']} "
+                    f"({routine_event['type']}) impact={impact:.2f}"
+                )
 
     if tick_index % 60 == 0:
         print(f"[engine] tick {tick_index} sim_ts={sim_ts.isoformat()}")
