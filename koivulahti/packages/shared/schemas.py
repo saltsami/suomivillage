@@ -1,7 +1,8 @@
+import json
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class Event(BaseModel):
@@ -10,11 +11,35 @@ class Event(BaseModel):
     sim_ts: datetime
     place_id: Optional[str]
     type: str
-    actors: Dict[str, Any]
-    targets: Dict[str, Any]
+    actors: List[Any] = Field(default_factory=list)
+    targets: List[Any] = Field(default_factory=list)
     publicness: float
     severity: float
-    payload: Dict[str, Any]
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("actors", "targets", mode="before")
+    @classmethod
+    def parse_json_lists(cls, v: Any) -> Any:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return []
+        return v
+
+    @field_validator("payload", mode="before")
+    @classmethod
+    def parse_payload(cls, v: Any) -> Any:
+        if v is None:
+            return {}
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return {}
+        return v
 
 
 class RenderJob(BaseModel):
@@ -37,8 +62,20 @@ class Post(BaseModel):
     source_event_id: str
     tone: str
     text: str
-    tags: List[str]
+    tags: List[str] = Field(default_factory=list)
     safety_notes: Optional[str] = None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def parse_tags(cls, v: Any) -> Any:
+        if v is None:
+            return []
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return []
+        return v
 
 
 class Place(BaseModel):
