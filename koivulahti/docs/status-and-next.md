@@ -32,7 +32,10 @@ Updated: 2025-12-12
 
 From `infra/`:
 1. `cp .env.example .env` and edit values.
-2. `docker compose --env-file .env --profile gpu up --build`
+2. Start one profile:
+   - GPU: `docker compose --env-file .env --profile gpu up --build`
+   - CPU: `docker compose --env-file .env --profile cpu up --build`
+   (set `LLM_SERVER_URL` in `.env` to `http://llm-server-gpu:8080` or `http://llm-server-cpu:8080`).
 3. Verify:
    - `http://localhost:8081/health`
    - `http://localhost:8082/docs`
@@ -71,4 +74,3 @@ API/Admin/UI
    - maintain sim_ts and tick
    - choose next events/actions deterministically
    - apply relationship deltas and write memories.
-

@@ -28,10 +28,30 @@ services:
       timeout: 3s
       retries: 20
 
-  # GPU LLM server (llama.cpp)
-  llm-server:
+  # LLM servers (llama.cpp) with CPU/GPU profiles.
+  # Choose one when running: `--profile cpu` or `--profile gpu`.
+  llm-server-cpu:
+    profiles: ["cpu"]
+    image: ${LLM_SERVER_IMAGE_CPU:-ghcr.io/ggml-org/llama.cpp:server}
+    command: >
+      -m ${LLM_MODEL_PATH}
+      -c ${LLM_CONTEXT}
+      --host 0.0.0.0
+      --port 8080
+      --threads 8
+    volumes:
+      - ../models:/models:ro
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  llm-server-gpu:
     profiles: ["gpu"]
-    image: ghcr.io/ggerganov/llama.cpp:server-cuda
+    image: ${LLM_SERVER_IMAGE_GPU:-ghcr.io/ggml-org/llama.cpp:server-cuda}
     command: >
       -m ${LLM_MODEL_PATH}
       -c ${LLM_CONTEXT}
@@ -48,22 +68,26 @@ services:
         reservations:
           devices:
             - capabilities: ["gpu"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
 
   llm-gateway:
     build:
       context: ..
       dockerfile: services/llm_gateway/Dockerfile
+    restart: unless-stopped
     environment:
       ENV: ${ENV}
       LLM_PROVIDER: ${LLM_PROVIDER}
-      LLM_SERVER_URL: http://llm-server:8080
+      LLM_SERVER_URL: ${LLM_SERVER_URL}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE}
       REDIS_URL: ${REDIS_URL}
     depends_on:
       redis:
         condition: service_healthy
-      llm-server:
-        condition: service_started
     ports:
       - "8081:8081"
 

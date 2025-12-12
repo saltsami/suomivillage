@@ -8,8 +8,13 @@ TL;DR
 3. Laita GGUF‑malli kansioon `koivulahti/models/` ja päivitä `.env`:
    - `LLM_MODEL_PATH=/models/your-7b-instruct.Q4_K_M.gguf`
 4. Käynnistä:
-   - GPU: `docker compose --env-file .env --profile gpu up --build`
-   - Ilman GPU: `docker compose --env-file .env up --build`
+   - GPU (RTX3080): `docker compose --env-file .env --profile gpu up --build`
+   - CPU fallback: `docker compose --env-file .env --profile cpu up --build`
+
+LLM‑serverin oletus‑imagit tulevat `ghcr.io/ggml-org/llama.cpp`‑repossa (`server` / `server-cuda`). Jos haluat täyden toistettavuuden, pinnaa digest:
+  `docker pull ghcr.io/ggml-org/llama.cpp:server-cuda`
+  `docker image inspect ghcr.io/ggml-org/llama.cpp:server-cuda --format='{{index .RepoDigests 0}}'`
+  -> aseta `.env`:iin esim. `LLM_SERVER_IMAGE_GPU=ghcr.io/ggml-org/llama.cpp@sha256:<DIGEST>`.
 
 Selaa:
 - API: http://localhost:8082/docs
@@ -32,13 +37,17 @@ GPU‑profiili (valinnainen mutta suositus MVP:lle):
 - LLM‑malli:
   - Lataa 7B instruct GGUF ja laita hostille: `koivulahti/models/your-7b-instruct.Q4_K_M.gguf`
   - `.env` sisällä malli näkyy kontin polkuna `/models/...`.
+- LLM‑serveri:
+  - GPU‑ajossa: `LLM_SERVER_URL=http://llm-server-gpu:8080`
+  - CPU‑ajossa: `LLM_SERVER_URL=http://llm-server-cpu:8080`
 - Simulaatio:
   - `SIM_SEED` määrää determinismin.
   - `IMPACT_THRESHOLD_*` kontrolloi mitä julkaistaan kanaviin.
 
 3) Käynnistys ja pysäytys
 Käynnistä infra‑kansiosta:
-- `docker compose --env-file .env --profile gpu up --build`
+- GPU: `docker compose --env-file .env --profile gpu up --build`
+- CPU: `docker compose --env-file .env --profile cpu up --build`
 - `docker compose --env-file .env down -v` (stop + clean)
 
 4) Palvelut ja portit
@@ -46,7 +55,7 @@ Service | Portti | Mitä tekee
 ---|---|---
 `api` | 8082 | Julkinen luku + admin stubit
 `llm-gateway` | 8081 | Promptit + JSON‑kontrakti + adapteri LLM:lle
-`llm-server` | 8080 | llama.cpp server (GPU‑profilissa)
+`llm-server-cpu` / `llm-server-gpu` | 8080 | llama.cpp server (valitse profiililla cpu/gpu)
 `postgres` | 5432 | Event store + world taulut + posts
 `redis` | 6379 | Render job queue + cache
 
@@ -92,6 +101,9 @@ Migrations:
 
 “LLM server endpoint ei löydy”
 - llama.cpp endpoint vaihtelee buildistä. Päivitä adapteri vain gatewayyn, ei workereihin.
+
+“LLM server image tag ei löydy”
+- Käytä ggml‑org `server`/`server-cuda` tageja tai overridea `.env`:issä `LLM_SERVER_IMAGE_CPU`/`LLM_SERVER_IMAGE_GPU`.
 
 “GPU ei näy kontissa”
 - Aja `--profile gpu` ja varmista `nvidia-smi` dockerissa.
