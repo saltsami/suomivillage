@@ -1,0 +1,339 @@
+Hyvä. Lyödään heti “Suomi-kylä” käyntiin niin, että kontentti syntyy eventeistä + suhteiden/maineen kehittymisestä eikä sun käsin kirjoittamisesta.
+
+Kickoff Pack v0.1 – Suomi-kylä + Some + Chat + Uutiset
+1) Ydinsääntö: maailma tuottaa totuuden, media tuottaa tarinan
+
+World/Event Bus = totuus (kuka teki mitä, missä, kenelle, seuraukset)
+
+NPC Agents = teot + reaktiot + muistot
+
+Media Layer = feed/chat/news, joka renderöi eventit eri näkökulmista
+→ sama eventti synnyttää 3 sisältöä: “minäkuva”, “juoru”, “uutinen”.
+
+2) Data-malli (minimi joka riittää autonomisuuteen)
+
+Tee nämä taulut/collections:
+
+entities
+
+id, type (npc/place/item), name, meta
+
+npc_profiles
+
+npc_id
+
+traits: OCEAN (0–1), risk (0–1), empathy (0–1), dominance (0–1)
+
+values: community, fairness, status, money, freedom (0–1)
+
+voice: slang_level, politeness, sarcasm, verbosity
+
+roles: influencer | gossip | mediator | journalist | worker
+
+posting: base_rate/day, defensiveness, bragging
+
+relationships
+
+from_npc, to_npc
+
+trust (-100..100), respect, affection, jealousy, fear
+
+grievances[], debts[], last_interaction_ts
+
+events (append-only)
+
+id, ts, place_id, type, actors[], targets[]
+
+publicness (0..1), severity (0..1)
+
+tags[], payload (json)
+
+memories
+
+npc_id, event_id, importance (0..1), summary, embedding
+
+(plus) belief_updates (optional)
+
+goals
+
+npc_id, horizon (short/long), priority, goal_json, status
+
+content
+
+id, source_event_id
+
+channel (FEED/CHAT/NEWS), author_id
+
+text, tone, visibility
+
+moderation_ok, publish_ts
+
+3) Agent loop (tällä saat “tekemistä” ilman käsinjuonta)
+
+LLM vain päätöksiin & tekstiin. Rutiinit + liike deterministisesti.
+
+Pseudolooppi per NPC (event-aktivoitu + ajastettu):
+
+Perception: lähialueen eventit + oma tila + top-relationship muutokset
+
+Retrieve: hae 3–8 relevanttia muistoa (sama paikka/henkilö/tagi)
+
+Intent: valitse 1–2 intenttiä (help, avoid, confront, impress, earn…)
+
+Plan: valitse action-sarja (max 1–3 askelta)
+
+Act: kutsu Game API (move/talk/trade/borrow/post…)
+
+Write memory: tallenna eventti + päivitä suhteet
+
+Optional post: jos (impact + persona + publicness) ylittää kynnyksen → tee FEED/CHAT-viesti
+
+Budjetointi: NPC ajattelee vasta kun (a) relevantti event, (b) “social window” (esim. kahvioilta), tai (c) 15–60 min sim-aika tick.
+
+4) “Media Layer” – se mikä tekee tästä seurattavan
+Impact-score (mikä on julkaisemisen arvoista)
+
+Laske eventille:
+
+impact =
+  0.30*novelty +
+  0.25*conflict +
+  0.20*publicness +
+  0.15*status_of_people +
+  0.10*cascade_potential
+
+
+FEED: authorin oma intressi (brändi/puolustus/kehuskely)
+
+CHAT: reaktiot + juorut (nopea, kärjistyvä)
+
+NEWS: vain top 1–3 / “tunti”, plus iltakooste
+
+Juoru-moottori (autonomia boost)
+
+Kun event tapahtuu:
+
+todistajat saavat “fact”
+
+osa luo rumor-eventin (distortion 0–0.6) riippuen:
+
+gossip-role, jealousy, fear, loyalty
+
+rumor-eventit aiheuttaa uusia konflikteja (väärinkäsitys = ilmaista draamaa)
+
+5) Suhdepäivitykset (perusdelta-taulukko)
+
+Tämä tekee “kehittymisen” konkreettiseksi.
+
+Event	Trust	Respect	Affection	Jealousy	Grievance
+HELP (julkinen apu)	+20	+10	+10	0	-
+PROMISE_BROKEN	-25	-10	-10	+5	“promise_broken”
+INSULT (julkinen)	-15	-25	-15	+10	“humiliated”
+TRADE_FAIR	+8	+5	+2	0	-
+SCAM_CAUGHT	-40	-30	-20	0	“scammer”
+GIFT	+12	+5	+10	+5 (kolmansille)	-
+FLIRT	+5	+2	+10	+15 (kolmansille)	-
+GOSSIP_SPREAD (paljastuu)	-30	-10	-15	0	“gossiped”
+APOLOGY_ACCEPTED	+15	+10	+10	-5	grievance softens
+6) Casti: 12 NPC:tä (valmiit koukut + somekäytös)
+
+Tässä jokaiselle: rooli / tavoite / triggerit / postausprofiili.
+
+Sanni (29), Kahvion vetäjä
+
+Rooli: Influencer-light + connector
+
+Pitkä tavoite: “Kahvio trendaa – enemmän kävijöitä”
+
+Trigger: sotku/epäreiluus kahviossa → puolustaa brändiä
+
+Postaa: fiilis + “päivän leivos” + passiivis-aggressiivinen piikki
+
+Jari (45), Kyläyhdistyspomo
+
+Rooli: Gatekeeper (resurssit/talkoot)
+
+Tavoite: “järjestys & arvostus”
+
+Trigger: joku myöhästyy tai jättää hommat → kostonkierre
+
+Postaa: tiedotteita, joskus “en sano että sanon mutta…”
+
+Miia (33), Kirppiskuningatar
+
+Rooli: Hustler + trendihakuinen
+
+Tavoite: “raha + status”
+
+Trigger: kilpailija kopioi → savuaa
+
+Postaa: löydöt + ennen/jälkeen + käänteinen kehuskelu
+
+Riku (24), Sali/urheilu
+
+Rooli: Provosoija
+
+Tavoite: “ylivoima/huomio”
+
+Trigger: vähättely → julkinen kuittaus
+
+Postaa: treenit + “faktat” + kommenttiriidat
+
+Leena (52), Sovittelija
+
+Rooli: Mediator
+
+Tavoite: “rauha kylään”
+
+Trigger: kiusaaminen/epäreilu huhu → puuttuu
+
+Postaa: harvoin, mutta painavasti
+
+Osku (38), Autonikkari / työkalut
+
+Rooli: Borrow/Loan drama engine
+
+Tavoite: “selviydy veloista”
+
+Trigger: joku vaatii velkaa → selittelee
+
+Postaa: tee-se-itse + “ei se nyt niin just…”
+
+Petri (41), KyläUutiset-toimittaja
+
+Rooli: Editor/Newsroom
+
+Tavoite: “kylä kiinnostaa, mutta pysyy asiallisena”
+
+Trigger: iso konflikti → tekee “taustat”
+
+Postaa: uutiset + koosteet (ei osallistu riitoihin julkisesti)
+
+Aila (60), Juoru-GOAT
+
+Rooli: Gossip amplifier
+
+Tavoite: “olla verkon keskus”
+
+Trigger: salaisuuden haju → levittää
+
+Postaa: vihjailut, “en sano nimiä”
+
+Eero (35), Metsä/kalastus
+
+Rooli: Aesthetic + salaisuudet
+
+Tavoite: “rauha + oma projekti”
+
+Trigger: joku sotkee luontopaikat → raivo
+
+Postaa: luontosisältö, mutta kriisissä tulistuu
+
+Noora (27), Käsityöyrittäjä
+
+Rooli: Brand manager
+
+Tavoite: “kasvata asiakaskunta”
+
+Trigger: maineuhka/huhu → defensive PR
+
+Postaa: tuotteet + behind the scenes
+
+Timo (48), Järjestyksen mies
+
+Rooli: Normien vartija
+
+Tavoite: “kuri ja oikeus”
+
+Trigger: epäreiluus/varkaus → tutkii
+
+Postaa: varoituksia, joskus ylilyö
+
+Kaisa (31), Paluumuuttaja
+
+Rooli: Catalyst
+
+Tavoite: “uusi alku, mutta myös näyttö”
+
+Trigger: ulkopuolisuuden tunne → tekee isoja liikkeitä
+
+Postaa: “uusi elämä” -sisältö → vetää kateutta
+
+7) Event-injektorit (autonomia ilman käsin kirjoitettua juonta)
+
+Tässä 20 aloitusinjektoria + rakenne, jolla saat loputtomasti lisää.
+
+Injektori = “tilanne + niukkuus + julkisuus”
+
+Toripaikat jaetaan uudelleen
+
+Talkoopäivä peruuntuu viime hetkellä
+
+Peräkärry varataan päällekkäin
+
+Kahviossa “kuka sotki?”
+
+Kirppiksellä epäily huijauksesta
+
+Avaimet “katoaa” kyläyhdistyksen talolta
+
+Sähkökatko illalla
+
+Pakkanen rikkoo vesiputken (pieni kriisi)
+
+Kännykkä löytyi huoltsikalta (kuka omistaa?)
+
+Uusi tyyppi haluaa liittyä porukkaan (Kaisa katalyytti)
+
+Riku tekee tahattoman loukkauksen livessä
+
+Nooran brändistä leviää väärä huhu
+
+Osku myöhästyy velanmaksusta
+
+Aila “kuulee” romanssista (oli tai ei)
+
+Eeron kalapaikka paljastuu vahingossa
+
+Jari tekee liian tiukan säännön → kapina
+
+Sanni saa huonon arvion → maineenhallinta
+
+Timo aloittaa “tutkinnan” väärästä asiasta
+
+Miian myynti varastetaan (tai epäillään)
+
+Yhteinen tapahtuma: pikkujoulut/festarit/sauna → törmäykset
+
+Generatiivinen resepti (tee lisää automaattisesti)
+
+Place × Scarcity × Actor role conflict × Publicness
+Esim: KAHVIO × MAINE × influencer vs gatekeeper × 0.8 → syntyy aina eri sisältö, koska suhteet ovat eri.
+
+8) “Päivä 1” startti (että kylä lähtee heti eloon)
+
+Aamu: Jari julkaisee talkoo-ilmoituksen (NEWS + FEED tiedote)
+
+Päivä: Miia ja Kaisa törmää toripaikkaan (event → chat + rumor)
+
+Ilta: Sannin kahviossa tapahtuu pieni moka (joku kuvattu taustalla) → Noora reagoi brändimielessä
+
+Yö: Petri tekee “päivän kooste” (uutiset)
+
+9) Turva ja uskottavuus (pakolliset reunaehdot)
+
+Kaikille näkyvä disclaimer: fiktiivinen agenttikylä
+
+Sisältösuodatus: ei vihapuhetta, ei seksuaalista sisältöä, ei maalitusta, ei oikeiden henkilöiden väitteitä
+
+Rate limit: FEED max X postia/NPC/päivä, NEWS max Y/h, CHAT burst-rajat
+
+Seuraava askel (teen nyt heti seuraavaksi tähän samaan ketjuun)
+
+Valitsen “Suomi-kylä” -teeman ja kirjoitan:
+
+JSON-profiilit kaikille 12 NPC:lle (traits/values/voice/posting)
+
+Event-tyyppikatalogi (50 kpl) + kunkin payload-skeema
+
+Post/Chat/News -prompttikehykset (tool-only, deterministiset rajat)

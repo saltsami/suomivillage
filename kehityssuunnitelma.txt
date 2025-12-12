@@ -1,0 +1,256 @@
+Kehityssuunnitelma: mitä osia tarvitaan
+1) Core Engine (pakollinen)
+
+Tavoite: maailma etenee “tickeissä”, agentit tekevät päätöksiä, syntyy eventtejä, eventit vaikuttaa muistiin ja suhteisiin.
+
+World State
+
+Paikat, NPC:t, inventaariot/raha (jos talous), sää/kalenteri
+
+“Missä kukin on nyt”, “mitä on tapahtunut tänään”
+
+Event Bus
+
+Kaikki tapahtuu eventteinä (ARRIVAL, INSULT, BORROW_OVERDUE…)
+
+Eventit ovat ainoa “totuus” ja niistä rakennetaan feed/chat/news
+
+Scheduler
+
+Päivärutiinit + satunnaiset häiriöt (sähkökatko, myöhästynyt toimitus)
+
+Mahdollistaa “autonomian” ilman että sinä keksit sisältöä
+
+Policy/Rules
+
+Fyysiset rajoitteet (pitää olla samassa paikassa puhuakseen)
+
+“Ei ilmaiseksi rahaa/tavaraa”, “news ei vahvista huhua ilman verify=true”
+
+Relationship Graph
+
+trust/respect/affection/jealousy + grievances + debts
+
+Memory System
+
+Lyhyt: viimeiset eventit (sliding window)
+
+Pitkä: tiivistetyt muistot + tärkeimmät suhteiden muuttajat
+
+Retrieval: “mitä muistan tästä ihmisestä + tästä konfliktista?”
+
+2) Agent Runtime (pakollinen)
+
+Tavoite: agentti tuottaa päätöksiä, ei aina tekstiä.
+
+Decision loop
+
+Havaitse (relevantit eventit + paikka + tavoitteet)
+
+Päätä (action JSON)
+
+Engine validoi ja tuottaa eventin
+
+Personality + Goals
+
+Persona on parametreja → ohjaa valintoja ja postaus-tyyliä
+
+Goals “seed” + päivittyvät (esim. maine uhattuna → “issue statement”)
+
+Director (suositeltava)
+
+Ei kirjoita draamaa käsin, vaan nostaa todennäköisyyksiä: törmäytykset, kilpailu, väärinkäsitykset, tapahtuma-arkit
+
+Tämä on se “autonomian salaisuus”
+
+3) Content Layer (pakollinen)
+
+Tavoite: sama eventti renderöityy eri kanaviin.
+
+Renderers
+
+FEED renderer (NPC:n persona + event → 1 postaus)
+
+CHAT renderer (reagointi + lyhyet viestit)
+
+NEWS renderer (toimittaja-agentti + kooste + epävarmuusmerkinnät)
+
+Impact scoring
+
+Kaikkea ei julkaista → vain “kynnys yli” (muuten kylä spämmi)
+
+Moderation
+
+Guardrails + automaattiset soft/hard blockit
+
+“Rumor”-eventit aina merkitty epävarmaksi
+
+4) Infra, Observability ja Testit (pakollinen jos haluat hallittavan tuotteen)
+
+Persistence: Postgres (event store), plus “snapshotit” world stateen
+
+Queue/Workers: Redis Streams / NATS / RabbitMQ (generointi voi kestää)
+
+Logs & replay
+
+“Reproducible run”: samalla seedillä sama simulaatio
+
+Evaluation
+
+Laatu: toistuuko, unohtaako, onko järkeä
+
+Turva: lipsuuko kiellettyyn
+
+Kustannus: tokenit/päivä
+
+LLM-valinta: tarvitaanko “kehittyneitä” malleja?
+
+Brutaali totuus: autonomia ei tule isosta LLM:stä, vaan engine + eventit + muisti + säännöt. LLM on “dialogi-/tekstigeneraattori” ja kevyt päättelytyökalu.
+
+Kevyt + halpa strategia (suosittelen)
+
+Pieni/halpa malli hoitaa 80–90%:
+
+action-valinnat (JSON), lyhyet chatit, feed-postaukset
+
+Isompi malli vain harvoin:
+
+NEWS-koosteet, vaikeat konfliktit, “reputaatio-kriisit”, tiivistykset (summaries)
+
+CPU riittää?
+
+Kyllä, jos julkaisu on asynkroninen (kuten kuvailit).
+
+CPU-inferenssi pienellä kvantisoinnilla toimii hyvin: “tulee ulos kun tulee”.
+
+Mutta: jos haluat “reaaliaikaisen live-kylän”, GPU tai hostattu API helpottaa.
+
+Mitä malleja?
+
+En voi luvata “paras suomi” ilman kokeita, mutta käytännön valinta on usein:
+
+7–8B luokka kvantisoituna (llama.cpp) CPU:lle
+
+Varmista JSON-ulkostus (structured output) + lyhyt konteksti
+
+Kriittinen juttu: tee heti alussa pieni eval-setti suomeksi (30–50 tapausta): riita, sovinto, uutinen, huhu, pahoittelu, jne. Sillä valitset mallin faktalla etkä fiiliksellä.
+
+Token-kustannuksen minimointi (pakolliset keinot)
+
+Älä syötä agentille koko historiaa → syötä:
+
+viimeiset N eventtiä + 1–3 tiivistelmää + relevantit muistot
+
+“Memory compaction”: joka ilta agentille 1 tiivistelmä → tallennetaan
+
+“Plan harvoin”: agentti päivittää päivän tavoitteen 1–2x/päivä, ei joka tick
+
+Cache: sama eventti + sama persona → sama render (hash)
+
+Renderöi vain impact-kynnyksen yli
+
+
+Roadmap (milestone-pohjainen, ei aikatauluarvioita)
+Milestone 1 — Engine MVP (ei UI)
+
+Done kun:
+
+simulaatio pyörii 24h sim-aikaa ilman kaatumista
+
+event store täyttyy järkevästi
+
+replay toimii (sama seed = sama tulos)
+
+Sisältö:
+
+World state + event bus + scheduler
+
+Relationship graph + basic memory (last N + nightly summary placeholder)
+
+Rules + validation
+
+Milestone 2 — Agent Decision MVP (LLM minimissä)
+
+Done kun:
+
+agentit tekevät action JSON:ia (ei vielä hienoa tekstiä)
+
+syntyy konflikteja ja sovintoja ilman käsiohjausta
+
+Sisältö:
+
+Decision loop + persona-parametrit + goals
+
+Director-agentti (nostaa tapahtumien todennäköisyyksiä)
+
+Eval-setti “coherence/safety/cost”
+
+Milestone 3 — Content Layer MVP (FEED/CHAT/NEWS)
+
+Done kun:
+
+jokaisesta “isosta” eventistä syntyy järkevä julkaisu
+
+spammi pysyy kurissa impact scoringilla
+
+Sisältö:
+
+Renderers + promptit + output JSON contract
+
+Moderation guardrails
+
+Caching + memory compaction
+
+Milestone 4 — Observability + Admin (ennen stakeholder-UI:ta)
+
+Done kun:
+
+voit säätää seedejä, kynnysarvoja, persona-parametreja
+
+voit “replayata” päivän ja näyttää miksi jokin tapahtui
+
+Sisältö:
+
+Admin API + dashboard (voi olla ensin CLI)
+
+Metrics: posts/day, conflicts/day, token cost, moderation hits
+
+Milestone 5 — Stakeholder UI (read-only demo)
+
+Done kun:
+
+demo näyttää “kylän somen” uskottavana: feed, chat, uutiset, timeline
+
+“replay yesterday” nappi + “highlight arcs” (draaman kaari)
+
+Sisältö:
+
+Feed/Chat/News näkymät
+
+Timeline + “event → posts” drilldown
+
+“Character profile” sivu (muistot + suhteet)
+
+Milestone 6 — Public beta (jos haluat oikeita seuraajia)
+
+Done kun:
+
+turvallisuus ja moderointi kestää
+
+tuotanto-kustannus on ennustettava
+
+Sisältö:
+
+Rate limiting + abuse mitigation
+
+“Season arcs” (viikkotarina) + yleisöäänestykset (valinnaiset)
+
+Jos haluat, seuraavaksi teen konkreettisen “Engine spec” JSON/Markdownin:
+
+tick-malli (kuinka usein päätetään)
+
+event pipeline (validate → persist → effects → render queue)
+
+memory-skeema (episodic + summary + embedding keys)
+
+ja 1–2 referenssi-implementaatiota (Python/FastAPI + Postgres + worker).

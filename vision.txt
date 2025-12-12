@@ -1,0 +1,201 @@
+Hyvä. Tehdään moderni Suomi-kylä, jossa “todellisuus” on simulaatio ja yleisö näkee kaiken kylän omana somena + chattina + uutisina. Se on rakennettavissa niin, että draama syntyy automaattisesti ja on silti kontrollissa.
+
+0) Konsepti yhdellä lauseella
+
+Kylä pyörii eventeillä (kuka teki mitä, missä, kenelle) → sisältökerros muuntaa ne feediksi/chatiksi/uutisiksi → ihmiset seuraa kuin “live-saippuaa”.
+
+1) Kanavat (UI/tuote) – mitä yleisö näkee
+
+KyläFeed (Instagram/TikTok-tyylinen)
+
+NPC-postaukset: kuulumiset, kuvat (voi olla myöhemmin), “päivän fiilis”, piikittely
+
+Kommentit: muut NPC:t + (valvottu) yleisö
+
+Toriparlamentti (WhatsApp/Discord-tyylinen ryhmächat)
+
+nopea reagointi, juorut, kärjistykset, sovittelut
+
+KyläUutiset (paikallislehden live)
+
+toimitusagentti tekee otsikon + 2–5 riviä + “taustat”
+
+iltakooste + “huomisen odotukset”
+
+Tärkeä: sama tapahtuma näkyy eri tavalla: feed on “minäkuva”, chat on “reaktio”, uutiset on “kuratoitu totuus”.
+
+2) Kylän “tekemisen moottori” (ettei tule tylsää)
+Paikat, jotka pakottaa kohtaamisia (MVP)
+
+S-Market / kyläkauppa
+
+Kahvio / huoltsikka
+
+Tori + kirppis
+
+Kyläsauna / avantopaikka
+
+Urheilukenttä / lätkäkoppi
+
+Kyläyhdistyksen talo (kokoukset + talkoot)
+
+Päivärunko (ei LLM)
+
+aamurutiini → työ → “pakollinen kohtaamispaikka” → harrastus → ilta (sauna/kahvio)
+Tämä takaa törmäykset ja muistot, vaikka LLM olisi pois päältä.
+
+3) Draamamoottori (mikä oikeasti luo vihoja, suhteita ja kaaria)
+Niukkuudet (kitka)
+
+Raha / velat
+
+Status (“kylän vaikuttaja”, “luotettava”, “huijari”)
+
+Aika (lupaukset pettää)
+
+Huomio (kuka hengaa kenen kanssa)
+
+Resurssit (toripaikka, talkooapu, peräkärry, mökkivuoro)
+
+Suhdearvot (numeeriset, LLM vain tulkitsee)
+
+NPC A ↔ NPC B:
+
+trust, respect, affection, jealousy, fear + grievances (lista) + debts (lista)
+
+Juorumylly
+
+Eventistä syntyy huhuversio todennäköisyydellä:
+
+juoruilija > introvertti
+
+kateus = liioittelu, pelko = demonisointi, lojaalisuus = puolustelu
+
+4) Sisältökerros (se “kova somekanava”)
+Kolme generaattoria
+
+Post Generator (NPC:n ääni)
+
+Chat Reactor (ryhmächat-reaktiot, one-linerit, kinastelu)
+
+Newsroom (toimittaja valitsee top-eventit impact-scorella)
+
+Impact-score (mikä päätyy uutisiin / trendaamaan)
+
+novelty + conflict + publicness + status_of_people + cascade_potential
+→ vain top-1% tapahtumista saa “uutisnoston”, muuten tulee spämmiä.
+
+Julkaisusäännöt (jotta sisältö tuntuu oikealta)
+
+Kaikki ei postaa kaikesta (roolitus).
+
+Postaus on usein self-serving (maineen hallinta).
+
+Uutiset pyrkii neutraaliin, mutta voi “klikkiytyä” hienovaraisesti.
+
+5) NPC-casti (Suomi-kylä, 12 hahmoa + koukut)
+
+Tässä valmis aloituspakka, joka tuottaa draamaa:
+
+Sanni (29) – kahvion vetäjä, “hyvän mielen feed”, tietää kaikesta
+
+Jari (45) – talkoopomo/kyläyhdistys, kontrolloi resursseja, herkästi loukkaantuu
+
+Miia (33) – kirppiskuningatar, tekee “löytö”-postauksia, myös pientä selkäänpuukotusta
+
+Riku (24) – sali/treeni, ego ja kilpailu, kommentoi kaikkea
+
+Leena (52) – koulunkäynninohjaaja, sovittelija, mutta napakka
+
+Osku (38) – auto/huolto, “autotietäjä”, lainailee työkaluja → velat ja riidat
+
+Petri (41) – paikallislehden “toimittaja”, rakentaa uutiskanavan selkärangan
+
+Aila (60) – juoruämmä GOAT, huhumoottorin vahvistin
+
+Eero (35) – metsä/kalastus, “luontosisältö”, mutta salaisuuksia
+
+Noora (27) – käsityöt/etsy, brändi kunnossa, draama uhkaa imagoa
+
+Timo (48) – “järjestyksen mies” (vartijamainen), moraalikonfliktit
+
+Kaisa (31) – “palaa kylään kaupungista”, nostaa status- ja kateusjännitteet
+
+Miksi nämä toimii: niillä on valmiiksi ristikkäiset intressit (resurssit, status, totuus vs. imago, juoru vs. rauha).
+
+6) Ensimmäiset 3 tarinakaarta (valmiiksi suunniteltu)
+
+Toripaikkasota: kuka sai parhaan paikan ja miksi → huhut, kateus, “todisteet”
+
+Talkookriisi: sovittu talkoopäivä hajoaa → syylliset, sovittelut, boikotit
+
+Mökkivuoro-mysteeri: avain “katoaa” → syytökset → paljastus (tai väärä)
+
+Nämä ei ole käsikirjoitusta, vaan tilanneinjektoreita, joista agentit tekevät oman sotkunsa.
+
+7) Teknisesti: minimischema (tällä rakennat heti)
+
+Event (totuus)
+
+{
+  "id":"evt_123",
+  "ts":"2025-12-12T19:12:00Z",
+  "place":"KAHVIO",
+  "type":"INSULT|TRADE|HELP|RUMOR|ACCIDENT|FLIRT",
+  "actors":["npc_sanni","npc_riku"],
+  "targets":["npc_miia"],
+  "publicness":0.7,
+  "severity":0.4,
+  "payload":{"line":"...","item":"..."}
+}
+
+
+Content (näkyvä)
+
+{
+  "id":"post_991",
+  "source_event":"evt_123",
+  "channel":"FEED|CHAT|NEWS",
+  "author":"npc_sanni",
+  "text":"...",
+  "tone":"friendly|defensive|snarky",
+  "visibility":"public",
+  "moderation":{"ok":true}
+}
+
+8) MVP-roadmap (nopea mutta oikein)
+
+Vaihe 1 (1–2 viikkoa dev-aikaa, jos fokus):
+
+simulaatio + event-bus + 12 NPC rutiinit
+
+feed + chat + news UI (vaikka pelkkä web)
+
+impact-score + newsroom
+
+perusmoderointi + rate limits
+
+Vaihe 2:
+
+huhumoottori + maine/suhdearvot näkyviin “profiilikortteihin”
+
+“päivän kooste” + “huomisen agenda”
+
+yleisöäänestys 1x/päivä (vain parametreihin, ei suoraa tarinan pakotusta)
+
+Vaihe 3:
+
+kuvat (AI tai “stock”) + NPC:n “selfie-tyyli”
+
+replay-aikajana + binge
+
+kausiteemat (joulu, hirviviikot, kesätori, lakkouhka…)
+
+Jos haluat seuraavaksi konkreettisen speksin, teen sulle heti:
+
+12 NPC:n profiilikortit (persoonallisuusparametrit, harrastukset, postauskäytös, triggerit)
+
+50 eventtiä (mikro) + 12 isoa makroeventtiä
+
+julkaisusäännöt (milloin feed/chat/news laukeaa)
+…niin että kylä starttaa “päivä 1” jo kiinnostavana.

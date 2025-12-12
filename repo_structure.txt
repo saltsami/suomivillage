@@ -1,0 +1,31 @@
+koivulahti/
+  infra/
+    docker-compose.yml
+    .env.example
+  services/
+    api/
+      Dockerfile
+      app/main.py
+      app/schemas.py
+    llm_gateway/
+      Dockerfile
+      app/main.py
+      app/schemas.py
+    engine/
+      Dockerfile
+      app/runner.py
+      app/schemas.py
+    workers/
+      Dockerfile
+      app/worker.py
+      app/schemas.py
+  packages/
+    shared/
+      schemas.py
+      db.py
+      settings.py
+  migrations/
+    001_init.sql
+  models/
+    (laita GGUF-malli tänne)
+

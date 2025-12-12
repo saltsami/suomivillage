@@ -1,0 +1,46 @@
+koivulahti/
+  docs/
+    architecture.md
+    event-catalog.md
+    safety.md
+    eval-suite.md
+  packages/
+    core/
+      src/
+        world_state/
+        events/
+        rules/
+        scheduler/
+        scoring/
+        replay/
+    agents/
+      src/
+        profiles/
+        memory/
+        decision/
+        director/
+        tools/
+    llm/
+      src/
+        providers/        # local llama.cpp, remote api
+        prompts/
+        json_schemas/
+        caching/
+    services/
+      api/
+        src/              # FastAPI/Express: query feed/news, admin actions
+      workers/
+        src/              # async generation jobs
+    storage/
+      migrations/
+      schemas/
+  ui/
+    stakeholder-demo/
+      src/                # read-only demo: feed/chat/news + timeline
+    admin/
+      src/                # run controls, seed, moderation, replay
+  scripts/
+    run_sim.sh
+    seed_day1.py
+    eval_run.py
+

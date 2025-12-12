@@ -1,0 +1,227 @@
+Tiivis suunnitelma
+
+Päivärutiinit + harrastukset → agentit liikkuu ja törmää.
+
+Resurssit + tavoitteet → syntyy kitkaa (raha, tavarat, aika, huomio).
+
+Suhde- ja mainejärjestelmä → jokainen kohtaaminen jättää jäljen.
+
+Tapahtuma- & juorumoottori → isoista jutuista syntyy “kylän puheenaihe”.
+
+Some/uutistoimitus → tapahtumat paketoidaan seuraajille.
+
+Alla konkreettisesti miten rakennat tämän.
+
+1) Kylän “tekemisen moottori” (Behavior)
+A) Päiväsuunnitelma ilman LLM:ää (tärkeä)
+
+Tee jokaiselle NPC:lle deterministinen runko:
+
+Aamurutiini (uni, ruoka, työ)
+
+Päiväblokit (ammatti/velvollisuus)
+
+Vapaa-aika (harrastuspaikat)
+
+Sosiaalinen aika (kahvila/sauna/torin kulma)
+
+Yö (palautuminen)
+
+Tämä takaa että:
+
+he päätyvät samaan paikkaan
+
+he kohtaavat (eventtejä syntyy)
+
+B) Harrastukset “content hooks”
+
+Harrastus ei ole vain flavor—se on tapahtumageneraattori. Esim:
+
+Kalastus → saalis, kateus, varastaminen, “isoin hauki”
+
+Musiikki → esiintyminen, floppi, fanit, riidat bändissä
+
+Salitreeni → ego, loukkaantuminen, “treenivinkit”, body-draama
+
+Metsästys → saalis/aseet (varovasti), vaarat, tarinat
+
+Puutarha → kilpailu, sabotointi, kasvitaudit
+
+Käytännössä: jokaisella harrastuksella on lista mikrotapahtumia ja harvinaisia makrotapahtumia.
+
+2) Tavoitteet ja kitka (Goal + scarcity)
+
+Draama syntyy kilpailusta. Tee näistä niukkoja:
+
+Raha, ruoka, arvostus, työvuorot, myyntipaikat torilla
+
+Parisuhdehuomio (kuka hengaa kenen kanssa)
+
+Aika (mulla on kiire → lupaus jää pitämättä)
+
+Status (kylän “influencer”, “luotettu”, “huijari”)
+
+Sitten anna hahmoille ristikkäiset tavoitteet:
+
+“Haluan ostaa talon” vs. “Haluan nostaa vuokria”
+
+“Haluan olla pidetty” vs. “Haluan sanoa suorat faktat”
+
+“Haluan rauhan” vs. “Haluan paljastaa totuuden”
+
+3) Suhde- ja mainejärjestelmä (se joka tekee muistista merkityksellistä)
+
+Pidä tämä numeerisena, ja anna LLM:lle vain tulkinta + dialogi.
+
+Per NPC-pari:
+
+Trust (-100…100)
+
+Affection (-100…100)
+
+Respect (-100…100)
+
+Fear (0…100)
+
+Debt (raha/lupaus)
+
+Grievances (lista: “varasti”, “nolasi”, “petti lupauksen”)
+
+Lisäksi globaali:
+
+Reputation per NPC (kylän silmissä)
+
+Faction (porukat/kerhot)
+
+Päivityssääntö (esimerkki):
+
+julkinen nöyryytys → respect -20, trust -10, grievance “humiliated”
+
+auttoi kriisissä → trust +25, affection +10
+
+jäi kiinni valehtelusta → trust -30 + rumor boost
+
+4) Tapahtumageneraattori (Event Engine)
+A) Eventtityypit (pakollinen lista)
+
+Social: kohteliaisuus, loukkaus, flirtti, kateus, sovinto
+
+Economic: kauppa, huijaus, varkaus, lahja, velka
+
+Work: onnistuminen, moka, kilpailu, potkut/ylennys (kevyt)
+
+Accident: loukkaantuminen, tulipalo, sähkökatko, koiran karkaaminen
+
+Mystery: “kuka rikkoi ikkunan?”, “kuka levitti huhun?”
+
+B) Impact scoring (mikä päätyy someen/uutisiin)
+
+Lasket jokaiselle eventille pisteet:
+
+Novelty (uusi/harvinainen)
+
+Social impact (montako NPC:tä koskee)
+
+Conflict (sisältääkö kitkaa)
+
+Status (osallisten maine)
+
+Publicness (nähtiin / kuultiin)
+
+Vain top-eventit generoivat sisältöä, muuten feed kuolee spämmiin.
+
+5) Juoru- ja vääristymämoottori (tämä tekee kylästä “elävän”)
+
+Kun event tapahtuu:
+
+Witnesses saavat “faktan”
+
+He voivat synnyttää rumor eventin:
+
+todennäköisyys riippuu persoonasta (juoruilija > introvertti)
+
+vääristymä riippuu motiivista (kateus = liioittelu, pelko = demonisointi)
+
+Rumor ei ole sama kuin totuus → syntyy:
+
+väärinkäsityksiä
+
+puolustautumista
+
+“paljastus”-kaaria
+
+6) Somekäyttäytyminen: kenestä tulee postaaja ja miksi
+
+Älä tee kaikista somepostaajia. Tee roolit:
+
+Influencer: postaa usein, hakee huomiota, dramatisoi
+
+Tiedottaja: postaa harvoin, mutta “asiallisesti”
+
+Lurker: ei postaa, mutta kommentoi joskus
+
+Whistleblower: postaa “paljastuksia”
+
+Aesthetic: postaa harrastuskuvia, mutta sotkeutuu draamaan sivusta
+
+Postauksen laukaisimet:
+
+saavutus (status +)
+
+uhka maineelle (defensive post)
+
+tunnesärö (rant)
+
+“todiste” (kuva/kuitti/ääniviesti — tekstimuotoisena)
+
+7) Tarinakaaret ilman käsikirjoitusta (Director / Showrunner)
+
+Tee kevyt “showrunner”-agentti tai sääntömoottori, joka:
+
+pitää kylän draamakäyrän elossa
+
+lisää pieniä ulkoisia tapahtumia jos meno lässähtää
+
+Esimerkki “injectoreista”:
+
+uusi kauppias saapuu (kilpailu)
+
+festarit (ihmisiä samaan paikkaan)
+
+sähkökatko (kriisi + sankarit)
+
+huhun siemen (“näin X:n yöllä torilla”)
+
+Tärkeää: showrunner ei kirjoita lopputulosta, se vain luo tilanteen.
+
+8) Konkreettinen MVP-sisältöpaketti (jotta pääset käyntiin)
+
+12 NPC:tä
+
+3 paikkaa joissa törmätään: kahvila, tori, harrastuspaikka
+
+6 harrastusta (2 postaajaa, 2 kilpailijaa, 2 sivustaseuraajaa)
+
+30 mikrotapahtumaa / harrastus
+
+10 makrotapahtumaa (harvinainen, iso uutinen)
+
+1 toimittaja (News-kanava)
+
+1 juoruilija (Rumor booster)
+
+1 sovittelija (draaman purku → kaari ei jumitu)
+
+9) Mitä teen seuraavaksi jos haluat “oikean suunnitteludokumentin”
+
+Voin kirjoittaa sulle seuraavaksi (suoraan kopioitavaksi speksiin):
+
+NPC-template (persoonallisuusparametrit + tavoitteet + postausprofiili)
+
+Event-schema + impact scoring -kaava
+
+Relationship update -taulukko (event type → trust/respect/affection delta)
+
+“Content rules” (milloin feed/chat/news laukeaa)
+
+3 valmista tarinakaarta (mystery, romanssi, talouskonflikti) + injector-listat

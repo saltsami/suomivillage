@@ -1,0 +1,190 @@
+Suositeltu tech stack (kevyt, selkeä, tuotantokelpoinen)
+Kielet & frameworkit
+
+Python (nopea kehittää sim/agentti-logic)
+
+FastAPI (API + admin)
+
+Workerit: Celery + Redis tai RQ + Redis (RQ on yksinkertaisempi)
+
+UI (myöhemmin): Next.js (read-only stakeholder demo)
+
+Data & infra
+
+Postgres = event store + world state snapshotit + julkaisut
+
+Redis = job queue + cache + rate limits
+
+(Valinnainen) S3-yhteensopiva object storage (MinIO) = logit, replay artefaktit, eval-raportit
+
+LLM-serving (RTX3080 10GB)
+
+Tavoite: 7B instruct pyörimään luotettavasti + JSON output.
+
+Ensisijainen: llama.cpp server (kvantisointi Q4/Q5, helppo, vakaa, hyvä hinta/teho)
+
+Vaihtoehto: vLLM (jos haluat enemmän throughputia / batchingia, mutta VRAM voi olla tiukempi)
+
+Malli: 7B “Instruct” -tyylinen, 4-bit kvantisointi (Q4_K_M tms.)
+
+Konteksti: pidä aluksi 2k–4k (muisti- ja tokenkulut hallintaan)
+
+Arkkitehtuuri (palvelut ja vastuut)
+[Sim Engine] --events--> [Postgres Event Store] ---> [Render Queue (Redis)]
+      |                                              |
+      |                                       [Workers: FEED/CHAT/NEWS]
+      |                                              |
+      v                                              v
+[Admin/API (FastAPI)] ------------------------> [Published Posts in Postgres]
+      |
+      v
+[Stakeholder UI (Next.js)]  <----- reads -----  [API]
+
+Palvelut (Docker Compose)
+
+sim-engine
+
+pyörittää tickit, tuottaa eventtejä, päivittää world statea
+
+EI generoi tekstiä synkronisesti (vain eventit)
+
+api (FastAPI)
+
+feed/chat/news -read API
+
+admin endpointit: start/stop, seed, replay, parametrit, moderaatioflagit
+
+workers
+
+consume “render jobs”
+
+kutsuu LLM:ää (LLM-gatewayn kautta)
+
+kirjoittaa postaukset/uutiset Postgresiin
+
+llm-gateway
+
+yksi paikka promptien, JSON-skeemojen, retryjen, cachingin ja mallivalinnan hallintaan
+
+“small model” vs “big model” routing (myöhemmin)
+
+llm-server
+
+llama.cpp server (GPU) tai vLLM (GPU)
+
+postgres, redis
+
+peruspalikat
+
+LLM-strategia (kustannus ja laatu hallintaan)
+1) Erottele “päätös” ja “teksti”
+
+Agentit tuottavat ACTION JSON (MOVE/HELP/INSULT/POST…) -> halpa
+
+Teksti renderöidään vain kun impact score ylittää kynnyksen
+
+2) Asynkroninen generointi (CPU/GPU ok)
+
+Ei tarvitse realtimeä → workerit saa jauhaa rauhassa
+
+GPU:lla 7B on silti mukavan nopea; CPU fallback mahdollinen
+
+3) Structured output pakolliseksi
+
+Kaikki LLM-output JSON-skeemalla:
+
+{channel, author_id, source_event_id, tone, text, tags, safety_notes}
+
+Gateway validoi JSONin; jos ei validi → korjausprompt + retry
+
+4) Mallitasot (suositus)
+
+Default: 7B kvantisoitu (feed + chat + kevyet päätökset)
+
+Escalation (harvinainen): isompi malli vain:
+
+uutiskoosteet, kriisit, pitkä tiivistys
+
+tätä ei tarvita MVP:hen
+
+Dev-ympäristö: docker-compose “yhdellä komennolla”
+Compose-profiilit
+
+profile:dev (mock LLM tai CPU llama.cpp)
+
+profile:gpu (RTX3080 LLM server)
+
+profile:ci (no LLM, deterministic tests)
+
+Volumet
+
+pgdata/ (persist)
+
+models/ (GGUF-mallit)
+
+runs/ (replay seedit, lokit, evalit)
+
+Observability & laadunvarmistus (älkää skipatko)
+
+Event replay: sama seed → sama event chain (determinismi)
+
+Metrics:
+
+posts/day, conflicts/day, moderation hits, tokenit/run, avg latency/job
+
+Eval-suite (pieni mutta tärkeä):
+
+30–50 skenaariota suomeksi: huhu, sovinto, uutinen, hyökkäys, brändikriisi
+
+automaattinen “JSON valid + safety” check
+
+Repo-rakenne (selkeä omistajuus tiimille)
+
+packages/core world state, events, rules, scheduler, scoring, replay
+
+packages/agents persona, goals, memory, director, decision policies
+
+packages/llm gateway, promptit, json-skeemat, caching, providers
+
+services/api FastAPI
+
+services/workers job runners
+
+infra/compose docker-compose + env-esimerkit
+
+ui/stakeholder-demo Next.js (myöhemmin)
+
+Roadmap tiimille (tekniset deliverablet)
+Phase A — Engine & determinismi
+
+event store + replay
+
+scheduler + rules + relationship graph
+
+admin API: start/stop/seed/replay
+
+Phase B — Agentit ilman hienoa tekstiä
+
+agent decision loop → ACTION JSON
+
+director “nostaa todennäköisyyksiä” (autonomia)
+
+testit: ei rikota sääntöjä, ei luoda rahaa tav tyhjästä
+
+Phase C — Render pipeline + 7B LLM
+
+render queue + workers
+
+llama.cpp server GPU
+
+JSON schema enforcement + retry + caching
+
+impact scoring (spammi kuriin)
+
+Phase D — Stakeholder UI (read-only)
+
+feed/chat/news timeline
+
+“event → postaukset” drilldown
+
+“replay yesterday” demo-nappi

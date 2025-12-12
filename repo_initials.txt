@@ -1,0 +1,330 @@
+Shared-skeemat (Pydantic) packages/shared/schemas.py
+from pydantic import BaseModel, Field
+from typing import Any, Literal, List, Dict, Optional
+from datetime import datetime
+
+Channel = Literal["FEED", "CHAT", "NEWS"]
+
+class Event(BaseModel):
+    id: str
+    sim_ts: datetime
+    place_id: str | None = None
+    type: str
+    actors: List[str] = Field(default_factory=list)
+    targets: List[str] = Field(default_factory=list)
+    publicness: float
+    severity: float
+    payload: Dict[str, Any] = Field(default_factory=dict)
+
+class RenderJob(BaseModel):
+    channel: Channel
+    author_id: str
+    source_event_id: str
+    prompt_context: Dict[str, Any]
+
+class GeneratedPost(BaseModel):
+    channel: Channel
+    author_id: str
+    source_event_id: str
+    tone: Literal["friendly","neutral","defensive","snarky","concerned","formal","hyped"]
+    text: str
+    tags: List[str] = Field(default_factory=list)
+    safety_notes: Optional[str] = None
+
+class RunStatus(BaseModel):
+    running: bool
+    sim_ts: datetime | None = None
+    seed: int | None = None
+
+6) API (FastAPI) – OpenAPI-runko services/api/app/main.py
+from fastapi import FastAPI, Query
+from typing import Literal, Optional, List
+from datetime import datetime
+import os
+
+app = FastAPI(title="Koivulahti API", version="0.1")
+
+Channel = Literal["FEED", "CHAT", "NEWS"]
+
+# --- Health ---
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+# --- Public reads (Stakeholder UI) ---
+@app.get("/posts", tags=["public"])
+def list_posts(
+    channel: Optional[Channel] = Query(None),
+    limit: int = Query(50, ge=1, le=200),
+    before: Optional[datetime] = Query(None),
+):
+    """
+    Returns latest posts (FEED/CHAT/NEWS). In MVP this can read directly from Postgres.
+    """
+    return {"items": [], "next_cursor": None}
+
+@app.get("/events", tags=["public"])
+def list_events(limit: int = Query(100, ge=1, le=500)):
+    return {"items": [], "next_cursor": None}
+
+# --- Admin controls ---
+@app.post("/admin/run/start", tags=["admin"])
+def start_run(seed: int | None = None):
+    """
+    In MVP: write a flag to Redis / DB that engine watches.
+    """
+    return {"started": True, "seed": seed}
+
+@app.post("/admin/run/stop", tags=["admin"])
+def stop_run():
+    return {"stopped": True}
+
+@app.get("/admin/run/status", tags=["admin"])
+def run_status():
+    return {"running": False, "sim_ts": None, "seed": None}
+
+@app.post("/admin/replay", tags=["admin"])
+def replay(seed: int, from_sim_ts: Optional[str] = None):
+    """
+    Replays from snapshots/events using deterministic seed.
+    """
+    return {"accepted": True, "seed": seed, "from_sim_ts": from_sim_ts}
+
+@app.post("/admin/moderation/flag", tags=["admin"])
+def flag_post(post_id: int, reason: str):
+    return {"flagged": True, "post_id": post_id, "reason": reason}
+
+
+Tämä tuottaa automaattisesti OpenAPI-kuvauksen: /docs ja /openapi.json
+
+7) LLM Gateway – schema enforcement + cache (minimi) services/llm_gateway/app/main.py
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
+from typing import Any, Dict, Optional
+import os, json, hashlib
+import httpx
+import redis
+
+from packages.shared.schemas import GeneratedPost
+
+app = FastAPI(title="Koivulahti LLM Gateway", version="0.1")
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://redis:6379/0")
+r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+
+LLM_SERVER_URL = os.getenv("LLM_SERVER_URL", "http://llm-server:8080")
+LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
+
+class GenerateRequest(BaseModel):
+    schema: str  # e.g. "GeneratedPost"
+    prompt: str
+    cache_key: Optional[str] = None
+
+@app.get("/health")
+def health():
+    return {"ok": True}
+
+@app.post("/generate", response_model=GeneratedPost)
+async def generate(req: GenerateRequest):
+    # Cache
+    key = req.cache_key or hashlib.sha256(req.prompt.encode("utf-8")).hexdigest()
+    cache_hit = r.get(f"llm:{key}")
+    if cache_hit:
+        return GeneratedPost.model_validate_json(cache_hit)
+
+    # llama.cpp server API (OpenAI-tyylinen endpoint vaihtelee buildistä.
+    # Tässä MVP: tee adapteri oikeaan endpointiin kun tiedätte serverin muodon.)
+    payload = {
+        "prompt": req.prompt,
+        "temperature": LLM_TEMPERATURE,
+    }
+
+    async with httpx.AsyncClient(timeout=120) as client:
+        try:
+            resp = await client.post(f"{LLM_SERVER_URL}/completion", json=payload)
+            resp.raise_for_status()
+        except Exception as e:
+            raise HTTPException(status_code=502, detail=f"LLM server error: {e}")
+
+    # Oletus: resp.json()["content"] sisältää JSON-stringin
+    data = resp.json()
+    raw = data.get("content") or data.get("response") or ""
+    try:
+        obj = json.loads(raw)
+    except Exception:
+        raise HTTPException(status_code=422, detail="LLM did not return valid JSON")
+
+    post = GeneratedPost.model_validate(obj)
+    r.setex(f"llm:{key}", 60 * 60 * 24, post.model_dump_json())
+    return post
+
+
+Käytännössä llama.cpp serverin endpoint voi olla /completion tai jotain muuta. Gateway on juuri se paikka, missä teette yhden adapterin ja kaikki muu toimii.
+
+8) Engine – eventit + render job enqueue services/engine/app/runner.py
+import os, time, json, uuid
+from datetime import datetime, timezone, timedelta
+import redis
+import psycopg
+
+REDIS_URL = os.getenv("REDIS_URL")
+DATABASE_URL = os.getenv("DATABASE_URL")
+QUEUE = os.getenv("RENDER_QUEUE", "render_jobs")
+TICK_MS = int(os.getenv("SIM_TICK_MS", "1000"))
+
+TH_FEED = float(os.getenv("IMPACT_THRESHOLD_FEED", "0.40"))
+TH_CHAT = float(os.getenv("IMPACT_THRESHOLD_CHAT", "0.25"))
+TH_NEWS = float(os.getenv("IMPACT_THRESHOLD_NEWS", "0.65"))
+
+r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+
+def impact_score(evt: dict) -> float:
+    # MVP: yksinkertainen scoring
+    return min(1.0, 0.3*1.0 + 0.25*evt["severity"] + 0.2*evt["publicness"])
+
+def enqueue_render(channel: str, author_id: str, source_event_id: str, prompt_context: dict):
+    job = {
+        "channel": channel,
+        "author_id": author_id,
+        "source_event_id": source_event_id,
+        "prompt_context": prompt_context
+    }
+    r.lpush(QUEUE, json.dumps(job))
+
+def insert_event(conn, evt: dict):
+    conn.execute(
+        """INSERT INTO events (id, sim_ts, place_id, type, actors, targets, publicness, severity, payload)
+           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+        (
+            evt["id"], evt["sim_ts"], evt.get("place_id"), evt["type"],
+            json.dumps(evt.get("actors", [])), json.dumps(evt.get("targets", [])),
+            evt["publicness"], evt["severity"], json.dumps(evt.get("payload", {}))
+        )
+    )
+
+def main():
+    sim_ts = datetime.now(timezone.utc)
+    with psycopg.connect(DATABASE_URL) as conn:
+        conn.autocommit = True
+        while True:
+            # 1) generate one MVP event (replace with scheduler + agents)
+            evt = {
+                "id": f"evt_{uuid.uuid4().hex}",
+                "sim_ts": sim_ts.isoformat(),
+                "place_id": "place_kahvio",
+                "type": "SMALL_TALK",
+                "actors": ["npc_sanni"],
+                "targets": ["npc_leena"],
+                "publicness": 0.4,
+                "severity": 0.1,
+                "payload": {"topic": "päivän fiilis"}
+            }
+            insert_event(conn, evt)
+
+            # 2) decide if it becomes content
+            imp = impact_score(evt)
+            if imp >= TH_CHAT:
+                enqueue_render("CHAT", "npc_sanni", evt["id"], {"event": evt})
+            if imp >= TH_FEED:
+                enqueue_render("FEED", "npc_sanni", evt["id"], {"event": evt})
+
+            # 3) advance time
+            sim_ts += timedelta(minutes=5)
+            time.sleep(TICK_MS / 1000.0)
+
+if __name__ == "__main__":
+    main()
+
+9) Worker – render job -> LLM -> posts services/workers/app/worker.py
+import os, json, time, hashlib
+import redis
+import httpx
+import psycopg
+
+REDIS_URL = os.getenv("REDIS_URL")
+DATABASE_URL = os.getenv("DATABASE_URL")
+QUEUE = os.getenv("RENDER_QUEUE", "render_jobs")
+LLM_GATEWAY_URL = os.getenv("LLM_GATEWAY_URL", "http://llm-gateway:8081")
+
+r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
+
+def mk_prompt(job: dict) -> str:
+    # MVP prompt: vaihda myöhemmin profile+memory+style
+    evt = job["prompt_context"]["event"]
+    return (
+        "Tuota yksi JSON-objekti skeemalla: "
+        "{channel, author_id, source_event_id, tone, text, tags, safety_notes}.\n"
+        f"channel={job['channel']}\n"
+        f"author_id={job['author_id']}\n"
+        f"source_event_id={job['source_event_id']}\n"
+        f"event={json.dumps(evt, ensure_ascii=False)}\n"
+        "Kirjoita suomeksi. Ei linkkejä. Jos epävarma, vihjaa epävarmuus.\n"
+        "Vastaa pelkkää JSONia."
+    )
+
+def save_post(conn, post: dict):
+    conn.execute(
+        """INSERT INTO posts (channel, author_id, source_event_id, tone, text, tags, safety_notes)
+           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+        (
+            post["channel"], post["author_id"], post["source_event_id"],
+            post["tone"], post["text"], json.dumps(post.get("tags", [])),
+            post.get("safety_notes")
+        )
+    )
+
+def main():
+    with psycopg.connect(DATABASE_URL) as conn:
+        conn.autocommit = True
+        while True:
+            raw = r.rpop(QUEUE)
+            if not raw:
+                time.sleep(0.25)
+                continue
+
+            job = json.loads(raw)
+            prompt = mk_prompt(job)
+            cache_key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+            req = {"schema": "GeneratedPost", "prompt": prompt, "cache_key": cache_key}
+            try:
+                resp = httpx.post(f"{LLM_GATEWAY_URL}/generate", json=req, timeout=180)
+                resp.raise_for_status()
+                post = resp.json()
+                save_post(conn, post)
+            except Exception as e:
+                # MVP: log
+                print("Worker failed:", e)
+
+if __name__ == "__main__":
+    main()
+
+10) Dockerfile-minimit (esimerkki, sama kaikkiin)
+
+services/api/Dockerfile (sama pattern myös muille)
+
+FROM python:3.11-slim
+WORKDIR /app
+RUN pip install --no-cache-dir fastapi uvicorn psycopg[binary] redis httpx pydantic
+COPY . /app
+EXPOSE 8082
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8082"]
+
+
+services/llm_gateway/Dockerfile
+
+FROM python:3.11-slim
+WORKDIR /app
+RUN pip install --no-cache-dir fastapi uvicorn redis httpx pydantic
+COPY . /app
+EXPOSE 8081
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8081"]
+
+
+services/engine/Dockerfile ja services/workers/Dockerfile
+
+FROM python:3.11-slim
+WORKDIR /app
+RUN pip install --no-cache-dir psycopg[binary] redis httpx
+COPY . /app
+CMD ["python", "app/runner.py"]   # workers: app/worker.py

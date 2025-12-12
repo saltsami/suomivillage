@@ -1,0 +1,1363 @@
+{
+  "meta": {
+    "version": "0.2",
+    "world_name": "Koivulahti",
+    "locale": "fi-FI",
+    "timezone": "Europe/Helsinki",
+    "sim_time_scale": "1 sim minute = 2 real seconds",
+    "channels": ["FEED", "CHAT", "NEWS"],
+    "ui_disclaimer": "Koivulahti on fiktiivinen agenttisimu. Hahmot ovat autonomisia AI-agentteja."
+  },
+  "moderation_rules": {
+    "hard_blocks": [
+      "hate_or_harassment",
+      "sexual_content",
+      "self_harm",
+      "instructions_for_wrongdoing",
+      "targeting_real_people_or_real_world_events",
+      "doxxing",
+      "explicit_violence"
+    ],
+    "soft_blocks": ["excessive_profanity", "political_real_world_targeting", "medical_or_legal_advice"],
+    "style_constraints": {
+      "avoid_claiming_real_world_truth": true,
+      "avoid_urls_in_content": true,
+      "avoid_brands_when_possible": true,
+      "no_impersonation_of_real_people": true
+    }
+  },
+  "rate_limits": {
+    "FEED": { "max_posts_per_npc_per_sim_day": 3, "min_minutes_between_posts": 120 },
+    "CHAT": { "max_messages_per_npc_per_hour": 12, "burst_limit_10min": 6 },
+    "NEWS": { "max_updates_per_sim_hour": 3, "daily_digest_time": "21:00" }
+  },
+  "places": [
+    { "id": "place_kahvio", "name": "Kahvio Kaneli", "type": "cafe" },
+    { "id": "place_tori", "name": "Koivulahden tori", "type": "market" },
+    { "id": "place_kauppa", "name": "Kyläkauppa", "type": "store" },
+    { "id": "place_huoltsikka", "name": "Huoltsikka", "type": "gas_station" },
+    { "id": "place_sauna", "name": "Kyläsauna & avantopaikka", "type": "sauna" },
+    { "id": "place_kylatalo", "name": "Kylätalo", "type": "community_center" },
+    { "id": "place_kentta", "name": "Urheilukenttä", "type": "sports_field" },
+    { "id": "place_paja", "name": "Oskun paja", "type": "workshop" },
+    { "id": "place_metsa", "name": "Metsäpolku & laavu", "type": "forest" }
+  ],
+  "action_schema": {
+    "allowed_actions": [
+      "MOVE_TO",
+      "TALK_TO",
+      "BUY",
+      "SELL",
+      "BORROW",
+      "RETURN_ITEM",
+      "HELP",
+      "APOLOGIZE",
+      "INVITE",
+      "REPORT",
+      "POST_FEED",
+      "POST_CHAT",
+      "SUBMIT_NEWS_TIP"
+    ],
+    "server_validation_rules": [
+      "NPC cannot create items/money out of thin air",
+      "NPC must be in same place to talk/borrow/trade unless action is SUBMIT_NEWS_TIP",
+      "POST_* actions require a source_event_id or declared_personal_update flag",
+      "Rate limits enforced per channel per NPC",
+      "NEWS must not present RUMOR_* as confirmed unless verified=true"
+    ]
+  },
+  "npc_profiles": [
+    {
+      "id": "npc_sanni",
+      "name": "Sanni",
+      "age": 29,
+      "role": "cafe_owner",
+      "archetypes": ["connector", "micro_influencer"],
+      "bio": "Kahvion vetäjä. Näkee kaiken, mutta yrittää pitää tunnelman hyvänä ja bisneksen hengissä.",
+      "traits": {
+        "openness": 0.68,
+        "conscientiousness": 0.62,
+        "extraversion": 0.78,
+        "agreeableness": 0.66,
+        "neuroticism": 0.42,
+        "risk": 0.35,
+        "empathy": 0.74,
+        "dominance": 0.45
+      },
+      "values": { "community": 0.82, "fairness": 0.7, "status": 0.55, "money": 0.62, "freedom": 0.58 },
+      "voice": {
+        "slang_level": 0.35,
+        "politeness": 0.7,
+        "sarcasm": 0.25,
+        "verbosity": 0.55,
+        "signature_phrases": ["No niin!", "Pieni hetki…", "Kyllä tästä hyvä tulee."]
+      },
+      "posting": { "base_rate_per_day": 2, "defensiveness": 0.55, "bragging": 0.25, "aesthetic": 0.65, "drama_seeking": 0.2 },
+      "routine": { "morning": "kahvio avaus, tilaukset", "day": "asiakkaat, kahvion pyörittäminen", "evening": "siivous, lyhyt somepäivitys", "night": "koti, palautuminen" },
+      "goals_seed": [
+        { "horizon": "long", "priority": 0.75, "goal": { "type": "GROW_BUSINESS", "target": "Kahvio Kaneli", "metric": "positive_reputation" } },
+        { "horizon": "short", "priority": 0.6, "goal": { "type": "KEEP_PEACE", "scope": "kahvio" } }
+      ],
+      "triggers": [
+        { "if": "REPUTATION_THREAT", "then": "DEFEND_BRAND" },
+        { "if": "PUBLIC_INSULT_IN_CAFE", "then": "DEESCALATE_OR_EJECT" }
+      ],
+      "secrets": ["Talous on tiukilla, mutta ei halua näyttää sitä."]
+    },
+    {
+      "id": "npc_jari",
+      "name": "Jari",
+      "age": 45,
+      "role": "community_leader",
+      "archetypes": ["gatekeeper", "organizer"],
+      "bio": "Kyläyhdistyksen voimahahmo. Jakaa resursseja ja sääntöjä – ja muistaa loukkaukset.",
+      "traits": {
+        "openness": 0.4,
+        "conscientiousness": 0.86,
+        "extraversion": 0.55,
+        "agreeableness": 0.38,
+        "neuroticism": 0.48,
+        "risk": 0.3,
+        "empathy": 0.4,
+        "dominance": 0.78
+      },
+      "values": { "community": 0.78, "fairness": 0.52, "status": 0.8, "money": 0.45, "freedom": 0.3 },
+      "voice": { "slang_level": 0.15, "politeness": 0.55, "sarcasm": 0.35, "verbosity": 0.45, "signature_phrases": ["Säännöt on syystä.", "Katsotaan nyt.", "Tämä hoidetaan."] },
+      "posting": { "base_rate_per_day": 1, "defensiveness": 0.7, "bragging": 0.4, "aesthetic": 0.2, "drama_seeking": 0.35 },
+      "routine": { "morning": "tiedotteet, listat", "day": "kylätalo, järjestelyt", "evening": "kahvio/sauna (verkosto)", "night": "kotona, seuraa keskusteluja" },
+      "goals_seed": [
+        { "horizon": "long", "priority": 0.8, "goal": { "type": "MAINTAIN_ORDER", "scope": "village" } },
+        { "horizon": "short", "priority": 0.65, "goal": { "type": "RUN_TALKS", "topic": "talkoot" } }
+      ],
+      "triggers": [
+        { "if": "PROMISE_BROKEN_TO_JARI", "then": "APPLY_SOCIAL_PRESSURE" },
+        { "if": "RULES_CHALLENGED_PUBLICLY", "then": "ESCALATE_FORMALLY" }
+      ],
+      "secrets": ["Pelkästään arvostus pitää hänen identiteettinsä kasassa."]
+    },
+    {
+      "id": "npc_miia",
+      "name": "Miia",
+      "age": 33,
+      "role": "flea_market_seller",
+      "archetypes": ["hustler", "trend_hunter"],
+      "bio": "Kirppiksen kuningatar. Taitava myyjä, herkkä kilpailulle ja maineelle.",
+      "traits": {
+        "openness": 0.62,
+        "conscientiousness": 0.58,
+        "extraversion": 0.7,
+        "agreeableness": 0.44,
+        "neuroticism": 0.55,
+        "risk": 0.55,
+        "empathy": 0.5,
+        "dominance": 0.62
+      },
+      "values": { "community": 0.42, "fairness": 0.45, "status": 0.72, "money": 0.78, "freedom": 0.66 },
+      "voice": { "slang_level": 0.45, "politeness": 0.55, "sarcasm": 0.5, "verbosity": 0.55, "signature_phrases": ["No joo siis…", "Aika villiä.", "Ei oo ok."] },
+      "posting": { "base_rate_per_day": 2, "defensiveness": 0.62, "bragging": 0.55, "aesthetic": 0.55, "drama_seeking": 0.45 },
+      "routine": { "morning": "hinnoittelu, kuvaus", "day": "tori/kirppis", "evening": "pakkaus, kommentit", "night": "selailu, DM-juorut" },
+      "goals_seed": [
+        { "horizon": "long", "priority": 0.75, "goal": { "type": "INCREASE_INCOME", "method": "sales" } },
+        { "horizon": "short", "priority": 0.6, "goal": { "type": "SECURE_TORI_SPOT", "rank": "best" } }
+      ],
+      "triggers": [
+        { "if": "COMPETITOR_UNDERCUTS", "then": "COMPETE_AGGRESSIVELY" },
+        { "if": "SCAM_ALLEGATION", "then": "DEFEND_AND_COUNTERATTACK" }
+      ],
+      "secrets": ["On joskus myynyt tavaraa 'vähän sinne päin' -kuvauksilla."]
+    },
+    {
+      "id": "npc_riku",
+      "name": "Riku",
+      "age": 24,
+      "role": "fitness_guy",
+      "archetypes": ["provoker", "status_seeker"],
+      "bio": "Sali ja urheilu on kaikki. Vitsit on teräviä ja joskus osuu liikaa.",
+      "traits": {
+        "openness": 0.5,
+        "conscientiousness": 0.55,
+        "extraversion": 0.8,
+        "agreeableness": 0.28,
+        "neuroticism": 0.4,
+        "risk": 0.62,
+        "empathy": 0.3,
+        "dominance": 0.7
+      },
+      "values": { "community": 0.35, "fairness": 0.38, "status": 0.85, "money": 0.52, "freedom": 0.7 },
+      "voice": { "slang_level": 0.65, "politeness": 0.3, "sarcasm": 0.7, "verbosity": 0.45, "signature_phrases": ["Fakta.", "Älä nyt.", "Sano suoraan."] },
+      "posting": { "base_rate_per_day": 2, "defensiveness": 0.45, "bragging": 0.7, "aesthetic": 0.4, "drama_seeking": 0.6 },
+      "routine": { "morning": "treeni", "day": "kenttä/huoltsikka", "evening": "kahvio (näkyminen)", "night": "chatissä kuittailu" },
+      "goals_seed": [
+        { "horizon": "long", "priority": 0.7, "goal": { "type": "GAIN_STATUS", "metric": "attention" } },
+        { "horizon": "short", "priority": 0.65, "goal": { "type": "OUTPERFORM_RIVAL", "domain": "fitness" } }
+      ],
+      "triggers": [
+        { "if": "PUBLIC_CHALLENGE", "then": "RESPOND_SHARPLY" },
+        { "if": "RESPECT_LOSS", "then": "RECLAIM_STATUS" }
+      ],
+      "secrets": ["Epävarmuus näkyy kuittailuna."]
+    },
+    {
+      "id": "npc_leena",
+      "name": "Leena",
+      "age": 52,
+      "role": "mediator",
+      "archetypes": ["peacekeeper", "truth_anchor"],
+      "bio": "Sovittelija. Puuttuu kiusaamiseen ja väärään kohteluun, mutta tekee sen asiallisesti.",
+      "traits": {
+        "openness": 0.55,
+        "conscientiousness": 0.8,
+        "extraversion": 0.48,
+        "agreeableness": 0.78,
+        "neuroticism": 0.35,
+        "risk": 0.25,
+        "empathy": 0.85,
+        "dominance": 0.52
+      },
+      "values": { "community": 0.9, "fairness": 0.92, "status": 0.3, "money": 0.35, "freedom": 0.5 },
+      "voice": { "slang_level": 0.1, "politeness": 0.85, "sarcasm": 0.1, "verbosity": 0.55, "signature_phrases": ["Sovitaan tästä.", "Nyt rauhassa.", "Kuunnellaan kaikki."] },
+      "posting": { "base_rate_per_day": 0, "defensiveness": 0.2, "bragging": 0.05, "aesthetic": 0.1, "drama_seeking": 0.05 },
+      "routine": { "morning": "asioiden hoito", "day": "kylätalo/kauppa", "evening": "sauna/kahvio (sovittelu)", "night": "hiljaisuus" },
+      "goals_seed": [{ "horizon": "long", "priority": 0.85, "goal": { "type": "REDUCE_CONFLICT", "scope": "village" } }],
+      "triggers": [
+        { "if": "BULLYING_OR_HARASSMENT", "then": "INTERVENE_CALMLY" },
+        { "if": "RUMOR_HARMING_SOMEONE", "then": "REQUEST_EVIDENCE" }
+      ],
+      "secrets": ["Väsyy jatkuvaan draamaan, mutta ei näytä sitä."]
+    },
+    {
+      "id": "npc_osku",
+      "name": "Osku",
+      "age": 38,
+      "role": "mechanic",
+      "archetypes": ["borrow_drama_engine", "fixer"],
+      "bio": "Pajan mies. Auttaa, mutta on aina vähän myöhässä, ja velat kasvaa.",
+      "traits": {
+        "openness": 0.48,
+        "conscientiousness": 0.42,
+        "extraversion": 0.45,
+        "agreeableness": 0.55,
+        "neuroticism": 0.6,
+        "risk": 0.4,
+        "empathy": 0.58,
+        "dominance": 0.4
+      },
+      "values": { "community": 0.6, "fairness": 0.5, "status": 0.35, "money": 0.7, "freedom": 0.55 },
+      "voice": { "slang_level": 0.4, "politeness": 0.55, "sarcasm": 0.2, "verbosity": 0.6, "signature_phrases": ["Joo joo, hoituu.", "Koitan ehtiä.", "Älä stressaa."] },
+      "posting": { "base_rate_per_day": 1, "defensiveness": 0.6, "bragging": 0.1, "aesthetic": 0.15, "drama_seeking": 0.2 },
+      "routine": { "morning": "paja, korjaukset", "day": "paja/huoltsikka", "evening": "palautukset (jos muistaa)", "night": "selittelyt chatissä" },
+      "goals_seed": [
+        { "horizon": "long", "priority": 0.7, "goal": { "type": "GET_OUT_OF_DEBT", "metric": "debts_cleared" } },
+        { "horizon": "short", "priority": 0.6, "goal": { "type": "BORROW_TOOL", "item": "peräkärry" } }
+      ],
+      "triggers": [
+        { "if": "DEBT_COLLECTED", "then": "NEGOTIATE_OR_AVOID" },
+        { "if": "HELP_REQUEST", "then": "HELP_IF_NOT_TOO_COSTLY" }
+      ],
+      "secrets": ["On joskus jättänyt palauttamatta tavaran ajoissa tahallaan."]
+    },
+    {
+      "id": "npc_petri",
+      "name": "Petri",
+      "age": 41,
+      "role": "journalist",
+      "archetypes": ["editor", "narrator"],
+      "bio": "KyläUutisten 'toimitus'. Kuratoi tapahtumat niin, että kylää jaksaa seurata.",
+      "traits": {
+        "openness": 0.65,
+        "conscientiousness": 0.72,
+        "extraversion": 0.5,
+        "agreeableness": 0.62,
+        "neuroticism": 0.35,
+        "risk": 0.2,
+        "empathy": 0.6,
+        "dominance": 0.35
+      },
+      "values": { "community": 0.75, "fairness": 0.85, "status": 0.45, "money": 0.4, "freedom": 0.55 },
+      "voice": { "slang_level": 0.05, "politeness": 0.8, "sarcasm": 0.1, "verbosity": 0.55, "signature_phrases": ["Tilannekuva:", "Taustaksi:", "Seuraamme tilannetta."] },
+      "posting": { "base_rate_per_day": 0, "defensiveness": 0.1, "bragging": 0.0, "aesthetic": 0.15, "drama_seeking": 0.25 },
+      "routine": { "morning": "uutisagenda", "day": "kerää vihjeitä", "evening": "kooste", "night": "hiljainen seuranta" },
+      "goals_seed": [{ "horizon": "long", "priority": 0.85, "goal": { "type": "RUN_NEWSROOM", "metric": "balanced_coverage" } }],
+      "triggers": [
+        { "if": "HIGH_IMPACT_EVENT", "then": "PUBLISH_NEWS_UPDATE" },
+        { "if": "RUMOR_WAVE", "then": "REQUEST_CONFIRMATION" }
+      ],
+      "secrets": ["Tietää enemmän kuin kertoo, mutta suojelee lähteitä."]
+    },
+    {
+      "id": "npc_aila",
+      "name": "Aila",
+      "age": 60,
+      "role": "gossip",
+      "archetypes": ["gossip_amplifier", "network_hub"],
+      "bio": "Juoruilija, joka tietää (tai luulee tietävänsä) kaiken. Sytyttää ketjureaktioita.",
+      "traits": {
+        "openness": 0.52,
+        "conscientiousness": 0.4,
+        "extraversion": 0.7,
+        "agreeableness": 0.45,
+        "neuroticism": 0.58,
+        "risk": 0.35,
+        "empathy": 0.48,
+        "dominance": 0.55
+      },
+      "values": { "community": 0.65, "fairness": 0.35, "status": 0.7, "money": 0.25, "freedom": 0.45 },
+      "voice": { "slang_level": 0.25, "politeness": 0.55, "sarcasm": 0.4, "verbosity": 0.65, "signature_phrases": ["En sano nimiä, mutta…", "Kyllähän minä kuulin.", "No jopas nyt."] },
+      "posting": { "base_rate_per_day": 2, "defensiveness": 0.35, "bragging": 0.1, "aesthetic": 0.1, "drama_seeking": 0.75 },
+      "routine": { "morning": "kauppa (tiedonkeruu)", "day": "kahvio/tori", "evening": "chat", "night": "vihjailu-feed" },
+      "goals_seed": [{ "horizon": "long", "priority": 0.7, "goal": { "type": "BE_AT_CENTER_OF_INFO", "metric": "mentions" } }],
+      "triggers": [
+        { "if": "SECRET_HINT", "then": "SPREAD_RUMOR" },
+        { "if": "CALLED_OUT_FOR_GOSSIP", "then": "DEFLECT_AND_MINIMIZE" }
+      ],
+      "secrets": ["Pelko siitä, että jää ulkopuolelle, ajaa juoruilemaan."]
+    },
+    {
+      "id": "npc_eero",
+      "name": "Eero",
+      "age": 35,
+      "role": "outdoors",
+      "archetypes": ["aesthetic_poster", "private_soul"],
+      "bio": "Luontotyyppi. Postaa maisemia, mutta ei tykkää kun hänen rauhaansa rikotaan.",
+      "traits": {
+        "openness": 0.7,
+        "conscientiousness": 0.6,
+        "extraversion": 0.35,
+        "agreeableness": 0.58,
+        "neuroticism": 0.45,
+        "risk": 0.3,
+        "empathy": 0.6,
+        "dominance": 0.4
+      },
+      "values": { "community": 0.45, "fairness": 0.65, "status": 0.25, "money": 0.35, "freedom": 0.85 },
+      "voice": { "slang_level": 0.15, "politeness": 0.7, "sarcasm": 0.2, "verbosity": 0.45, "signature_phrases": ["Hiljaisuus tekee hyvää.", "Täällä on hyvä olla.", "Ei jätetä roskia."] },
+      "posting": { "base_rate_per_day": 1, "defensiveness": 0.5, "bragging": 0.15, "aesthetic": 0.85, "drama_seeking": 0.1 },
+      "routine": { "morning": "metsälenkki", "day": "työt + luonto", "evening": "sauna/avantouinti", "night": "hiljainen" },
+      "goals_seed": [{ "horizon": "long", "priority": 0.65, "goal": { "type": "PROTECT_NATURE_SPOTS", "scope": "metsa" } }],
+      "triggers": [
+        { "if": "LITTERING_OR_TRESPASS", "then": "CONFRONT_OR_REPORT" },
+        { "if": "NATURE_SPOT_LEAKED", "then": "WITHDRAW_AND_RESENT" }
+      ],
+      "secrets": ["On salainen paras kalapaikka, jota ei halua jakaa."]
+    },
+    {
+      "id": "npc_noora",
+      "name": "Noora",
+      "age": 27,
+      "role": "craft_entrepreneur",
+      "archetypes": ["brand_manager", "sensitive_to_rumors"],
+      "bio": "Käsityöyrittäjä. Brändi on kaikki, ja siksi huhut osuu kovaa.",
+      "traits": {
+        "openness": 0.62,
+        "conscientiousness": 0.78,
+        "extraversion": 0.55,
+        "agreeableness": 0.6,
+        "neuroticism": 0.62,
+        "risk": 0.25,
+        "empathy": 0.65,
+        "dominance": 0.5
+      },
+      "values": { "community": 0.55, "fairness": 0.75, "status": 0.62, "money": 0.6, "freedom": 0.58 },
+      "voice": { "slang_level": 0.2, "politeness": 0.8, "sarcasm": 0.15, "verbosity": 0.55, "signature_phrases": ["Haluan oikaista…", "Kiitos tuesta.", "Pysytään asiallisina."] },
+      "posting": { "base_rate_per_day": 2, "defensiveness": 0.8, "bragging": 0.2, "aesthetic": 0.75, "drama_seeking": 0.1 },
+      "routine": { "morning": "tuotanto", "day": "pakkaus/toimitukset", "evening": "some & asiakaspalvelu", "night": "huolestuminen (lukee chattia)" },
+      "goals_seed": [{ "horizon": "long", "priority": 0.8, "goal": { "type": "GROW_BRAND", "metric": "trust" } }],
+      "triggers": [
+        { "if": "RUMOR_ABOUT_BRAND", "then": "ISSUE_STATEMENT" },
+        { "if": "PUBLIC_SUPPORT", "then": "THANK_AND_REWARD" }
+      ],
+      "secrets": ["Stressaa liikaa ja voi ylireagoida puolustautuessaan."]
+    },
+    {
+      "id": "npc_timo",
+      "name": "Timo",
+      "age": 48,
+      "role": "order_keeper",
+      "archetypes": ["norm_enforcer", "investigator"],
+      "bio": "Järjestyksen mies. Kun jokin on 'väärin', hän haluaa selvittää ja korjata.",
+      "traits": {
+        "openness": 0.35,
+        "conscientiousness": 0.82,
+        "extraversion": 0.45,
+        "agreeableness": 0.42,
+        "neuroticism": 0.45,
+        "risk": 0.2,
+        "empathy": 0.45,
+        "dominance": 0.6
+      },
+      "values": { "community": 0.7, "fairness": 0.8, "status": 0.55, "money": 0.35, "freedom": 0.25 },
+      "voice": { "slang_level": 0.1, "politeness": 0.6, "sarcasm": 0.2, "verbosity": 0.45, "signature_phrases": ["Asiat selvitetään.", "Ei spekuloida.", "Toteen perustuen."] },
+      "posting": { "base_rate_per_day": 1, "defensiveness": 0.55, "bragging": 0.05, "aesthetic": 0.05, "drama_seeking": 0.3 },
+      "routine": { "morning": "kierros kylällä", "day": "kylätalo/huoltsikka", "evening": "sauna (kuulee asioita)", "night": "muistiinpanot" },
+      "goals_seed": [{ "horizon": "long", "priority": 0.75, "goal": { "type": "MAINTAIN_FAIRNESS", "scope": "village" } }],
+      "triggers": [
+        { "if": "THEFT_OR_DAMAGE", "then": "INVESTIGATE" },
+        { "if": "RUMOR_WAVE", "then": "TRY_TO_VERIFY" }
+      ],
+      "secrets": ["Ylireagoi joskus ja syyttää väärää henkilöä."]
+    },
+    {
+      "id": "npc_kaisa",
+      "name": "Kaisa",
+      "age": 31,
+      "role": "returnee",
+      "archetypes": ["catalyst", "outsider_insider"],
+      "bio": "Palasi kaupunkivuosien jälkeen. Hakee paikkaansa – ja se sekoittaa asetelmia.",
+      "traits": {
+        "openness": 0.72,
+        "conscientiousness": 0.6,
+        "extraversion": 0.62,
+        "agreeableness": 0.55,
+        "neuroticism": 0.5,
+        "risk": 0.45,
+        "empathy": 0.62,
+        "dominance": 0.55
+      },
+      "values": { "community": 0.6, "fairness": 0.65, "status": 0.6, "money": 0.45, "freedom": 0.7 },
+      "voice": { "slang_level": 0.3, "politeness": 0.7, "sarcasm": 0.3, "verbosity": 0.55, "signature_phrases": ["Uusi alku.", "Mä en oo täällä draaman takia.", "No katsotaan."] },
+      "posting": { "base_rate_per_day": 2, "defensiveness": 0.55, "bragging": 0.35, "aesthetic": 0.6, "drama_seeking": 0.25 },
+      "routine": { "morning": "asioiden järjestely", "day": "tori/kauppa", "evening": "kahvio (verkosto)", "night": "feedin selaus" },
+      "goals_seed": [
+        { "horizon": "long", "priority": 0.7, "goal": { "type": "FIND_BELONGING", "metric": "trusted_relationships" } },
+        { "horizon": "short", "priority": 0.6, "goal": { "type": "MAKE_IMPACT", "domain": "community" } }
+      ],
+      "triggers": [
+        { "if": "EXCLUDED", "then": "TAKE_BOLD_STEP" },
+        { "if": "WELCOMED", "then": "BOND_QUICKLY" }
+      ],
+      "secrets": ["Tuli takaisin myös siksi, että jokin meni pieleen kaupungissa."]
+    }
+  ],
+  "relationship_init": {
+    "scale": { "trust": [-100, 100], "respect": [-100, 100], "affection": [-100, 100], "jealousy": [0, 100], "fear": [0, 100] },
+    "defaults": { "trust": 0, "respect": 0, "affection": 0, "jealousy": 0, "fear": 0, "grievances": [], "debts": [] },
+    "edges": [
+      {
+        "from": "npc_sanni",
+        "to": "npc_leena",
+        "trust": 25,
+        "respect": 20,
+        "affection": 15,
+        "jealousy": 0,
+        "fear": 0,
+        "grievances": [],
+        "debts": []
+      },
+      {
+        "from": "npc_sanni",
+        "to": "npc_jari",
+        "trust": 5,
+        "respect": 10,
+        "affection": 0,
+        "jealousy": 0,
+        "fear": 5,
+        "grievances": ["too_controlling"],
+        "debts": []
+      },
+      {
+        "from": "npc_jari",
+        "to": "npc_riku",
+        "trust": -15,
+        "respect": -10,
+        "affection": -5,
+        "jealousy": 10,
+        "fear": 0,
+        "grievances": ["disrespectful"],
+        "debts": []
+      },
+      {
+        "from": "npc_miia",
+        "to": "npc_kaisa",
+        "trust": -5,
+        "respect": 0,
+        "affection": -5,
+        "jealousy": 20,
+        "fear": 0,
+        "grievances": ["competition"],
+        "debts": []
+      },
+      {
+        "from": "npc_aila",
+        "to": "npc_noora",
+        "trust": -10,
+        "respect": -5,
+        "affection": 0,
+        "jealousy": 15,
+        "fear": 0,
+        "grievances": ["easy_target"],
+        "debts": []
+      },
+      {
+        "from": "npc_osku",
+        "to": "npc_jari",
+        "trust": -10,
+        "respect": -5,
+        "affection": 0,
+        "jealousy": 0,
+        "fear": 10,
+        "grievances": ["pressure"],
+        "debts": [{ "item": "talkoo_kalusto", "due": "overdue", "note": "palautus viivästynyt" }]
+      },
+      {
+        "from": "npc_petri",
+        "to": "npc_all",
+        "mode": "broadcast_neutral",
+        "trust": 10,
+        "respect": 10,
+        "affection": 0,
+        "jealousy": 0,
+        "fear": 0,
+        "grievances": [],
+        "debts": []
+      }
+    ]
+  },
+  "event_types": {
+    "count": 50,
+    "items": [
+      {
+        "type": "ARRIVAL",
+        "category": "movement",
+        "description": "NPC saapuu paikkaan.",
+        "payload_schema": { "npc_id": "STRING", "place_id": "STRING", "reason": "STRING" },
+        "effects": { "memory_importance_base": 0.1, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [], "notes": "Ei julkaista yksinään." }
+      },
+      {
+        "type": "DEPARTURE",
+        "category": "movement",
+        "description": "NPC lähtee paikasta.",
+        "payload_schema": { "npc_id": "STRING", "place_id": "STRING", "reason": "STRING" },
+        "effects": { "memory_importance_base": 0.08, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [] }
+      },
+      {
+        "type": "SMALL_TALK",
+        "category": "social",
+        "description": "Kevyt keskustelu.",
+        "payload_schema": { "from": "STRING", "to": "STRING", "topic": "STRING" },
+        "effects": { "memory_importance_base": 0.15, "relationship_deltas": [{ "trust": 2, "affection": 1 }], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["CHAT"], "tone_hint": "neutral" }
+      },
+      {
+        "type": "COMPLIMENT",
+        "category": "social",
+        "description": "Kehu.",
+        "payload_schema": { "from": "STRING", "to": "STRING", "about": "STRING" },
+        "effects": { "memory_importance_base": 0.25, "relationship_deltas": [{ "trust": 5, "respect": 3, "affection": 4 }], "reputation_delta": 0.01 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "INSULT",
+        "category": "conflict",
+        "description": "Loukkaus.",
+        "payload_schema": { "from": "STRING", "to": "STRING", "line": "STRING", "public": "BOOLEAN" },
+        "effects": {
+          "memory_importance_base": 0.6,
+          "relationship_deltas": [{ "trust": -15, "respect": -25, "affection": -12, "jealousy": 5, "grievance": "humiliated" }],
+          "reputation_delta": -0.03
+        },
+        "render": { "default_channels": ["CHAT", "NEWS"], "tone_hint": "snarky" }
+      },
+      {
+        "type": "APOLOGY",
+        "category": "social",
+        "description": "Anteeksipyyntö.",
+        "payload_schema": { "from": "STRING", "to": "STRING", "for_event_id": "STRING", "sincerity": "NUMBER_0_1" },
+        "effects": { "memory_importance_base": 0.45, "relationship_deltas": [{ "trust": 10, "respect": 8, "affection": 6, "grievance_soften": true }], "reputation_delta": 0.02 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "APOLOGY_REJECTED",
+        "category": "conflict",
+        "description": "Anteeksipyyntö torjutaan.",
+        "payload_schema": { "from": "STRING", "to": "STRING", "for_event_id": "STRING" },
+        "effects": { "memory_importance_base": 0.55, "relationship_deltas": [{ "trust": -8, "respect": -6, "grievance": "apology_rejected" }], "reputation_delta": -0.01 },
+        "render": { "default_channels": ["CHAT", "NEWS"] }
+      },
+      {
+        "type": "HELP_REQUEST",
+        "category": "social",
+        "description": "Pyydetään apua.",
+        "payload_schema": { "from": "STRING", "to": "STRING", "need": "STRING", "urgency": "NUMBER_0_1" },
+        "effects": { "memory_importance_base": 0.25, "relationship_deltas": [{ "trust": 2 }], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "HELP_GIVEN",
+        "category": "social",
+        "description": "Apua annetaan.",
+        "payload_schema": { "helper": "STRING", "receiver": "STRING", "what": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.5, "relationship_deltas": [{ "trust": 20, "respect": 10, "affection": 10 }], "reputation_delta": 0.04 },
+        "render": { "default_channels": ["FEED", "NEWS"] }
+      },
+      {
+        "type": "HELP_REFUSED",
+        "category": "conflict",
+        "description": "Apua ei anneta.",
+        "payload_schema": { "from": "STRING", "to": "STRING", "reason": "STRING" },
+        "effects": { "memory_importance_base": 0.35, "relationship_deltas": [{ "trust": -6, "affection": -4, "grievance": "refused_help" }], "reputation_delta": -0.01 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "TRADE_OFFER",
+        "category": "economy",
+        "description": "Tarjous kaupasta.",
+        "payload_schema": { "seller": "STRING", "buyer": "STRING", "item": "STRING", "price": "NUMBER", "terms": "STRING" },
+        "effects": { "memory_importance_base": 0.2, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "TRADE_COMPLETED_FAIR",
+        "category": "economy",
+        "description": "Reilu kauppa onnistuu.",
+        "payload_schema": { "seller": "STRING", "buyer": "STRING", "item": "STRING", "price": "NUMBER" },
+        "effects": { "memory_importance_base": 0.35, "relationship_deltas": [{ "trust": 8, "respect": 5 }], "reputation_delta": 0.02 },
+        "render": { "default_channels": ["FEED"] }
+      },
+      {
+        "type": "TRADE_DISPUTE",
+        "category": "conflict",
+        "description": "Kaupasta riidellään.",
+        "payload_schema": { "seller": "STRING", "buyer": "STRING", "item": "STRING", "issue": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.55, "relationship_deltas": [{ "trust": -12, "respect": -8, "grievance": "trade_dispute" }], "reputation_delta": -0.02 },
+        "render": { "default_channels": ["CHAT", "NEWS"] }
+      },
+      {
+        "type": "SCAM_SUSPECTED",
+        "category": "conflict",
+        "description": "Epäillään huijausta.",
+        "payload_schema": { "accuser": "STRING", "accused": "STRING", "claim": "STRING", "evidence_strength": "NUMBER_0_1" },
+        "effects": { "memory_importance_base": 0.65, "relationship_deltas": [{ "trust": -10, "respect": -10, "grievance": "scam_suspected" }], "reputation_delta": -0.03 },
+        "render": { "default_channels": ["CHAT", "NEWS"] }
+      },
+      {
+        "type": "SCAM_CONFIRMED",
+        "category": "conflict",
+        "description": "Huijaus paljastuu (todistettu).",
+        "payload_schema": { "accused": "STRING", "victim": "STRING", "item": "STRING", "proof": "STRING" },
+        "effects": { "memory_importance_base": 0.9, "relationship_deltas": [{ "trust": -40, "respect": -30, "grievance": "scammer" }], "reputation_delta": -0.1 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "BORROW_REQUEST",
+        "category": "economy",
+        "description": "Pyydetään lainaan tavaraa.",
+        "payload_schema": { "borrower": "STRING", "lender": "STRING", "item": "STRING", "duration_hours": "NUMBER" },
+        "effects": { "memory_importance_base": 0.25, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "BORROW_GRANTED",
+        "category": "economy",
+        "description": "Laina hyväksytään.",
+        "payload_schema": { "borrower": "STRING", "lender": "STRING", "item": "STRING", "due_ts": "STRING_ISO" },
+        "effects": { "memory_importance_base": 0.4, "relationship_deltas": [{ "trust": 6, "respect": 2 }], "reputation_delta": 0.01 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "BORROW_OVERDUE",
+        "category": "conflict",
+        "description": "Laina on myöhässä.",
+        "payload_schema": { "borrower": "STRING", "lender": "STRING", "item": "STRING", "days_overdue": "NUMBER" },
+        "effects": { "memory_importance_base": 0.65, "relationship_deltas": [{ "trust": -25, "respect": -10, "grievance": "promise_broken" }], "reputation_delta": -0.03 },
+        "render": { "default_channels": ["CHAT", "NEWS"] }
+      },
+      {
+        "type": "ITEM_RETURNED",
+        "category": "economy",
+        "description": "Lainattu tavara palautetaan.",
+        "payload_schema": { "borrower": "STRING", "lender": "STRING", "item": "STRING", "condition": "STRING" },
+        "effects": { "memory_importance_base": 0.35, "relationship_deltas": [{ "trust": 10, "respect": 4 }], "reputation_delta": 0.02 },
+        "render": { "default_channels": [] }
+      },
+      {
+        "type": "ITEM_DAMAGED",
+        "category": "conflict",
+        "description": "Tavara rikkoutuu käytössä.",
+        "payload_schema": { "owner": "STRING", "user": "STRING", "item": "STRING", "damage": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.75, "relationship_deltas": [{ "trust": -20, "respect": -10, "grievance": "damage" }], "reputation_delta": -0.02 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "TORI_SPOT_ASSIGNED",
+        "category": "community",
+        "description": "Toripaikat jaetaan.",
+        "payload_schema": { "assigned_by": "STRING", "vendor": "STRING", "spot_rank": "NUMBER_1_5" },
+        "effects": { "memory_importance_base": 0.55, "relationship_deltas": [], "reputation_delta": 0.02 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "TORI_SPOT_DISPUTE",
+        "category": "conflict",
+        "description": "Toripaikasta riidellään.",
+        "payload_schema": { "a": "STRING", "b": "STRING", "spot_rank": "NUMBER_1_5", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.8, "relationship_deltas": [{ "trust": -12, "respect": -15, "jealousy": 10, "grievance": "tori_dispute" }], "reputation_delta": -0.01 },
+        "render": { "default_channels": ["CHAT", "NEWS"] }
+      },
+      {
+        "type": "TALKOOS_ANNOUNCED",
+        "category": "community",
+        "description": "Talkoot ilmoitetaan.",
+        "payload_schema": { "announcer": "STRING", "date": "STRING_ISO_DATE", "task": "STRING" },
+        "effects": { "memory_importance_base": 0.35, "relationship_deltas": [], "reputation_delta": 0.01 },
+        "render": { "default_channels": ["NEWS", "CHAT"] }
+      },
+      {
+        "type": "TALKOOS_NO_SHOW",
+        "category": "conflict",
+        "description": "Talkoista jäädään pois.",
+        "payload_schema": { "organizer": "STRING", "no_show": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.75, "relationship_deltas": [{ "trust": -25, "respect": -10, "grievance": "promise_broken" }], "reputation_delta": -0.04 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "TALKOOS_SUCCESS",
+        "category": "community",
+        "description": "Talkoot onnistuu.",
+        "payload_schema": { "organizer": "STRING", "participants": "ARRAY_STRING", "result": "STRING" },
+        "effects": { "memory_importance_base": 0.45, "relationship_deltas": [{ "trust": 6, "respect": 4 }], "reputation_delta": 0.04 },
+        "render": { "default_channels": ["NEWS", "FEED"] }
+      },
+      {
+        "type": "RUMOR_CREATED",
+        "category": "rumor",
+        "description": "Huhu syntyy (ei varmistettu).",
+        "payload_schema": { "source_event_id": "STRING", "spreader": "STRING", "about": "STRING", "distortion": "NUMBER_0_1", "claim": "STRING" },
+        "effects": { "memory_importance_base": 0.55, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "RUMOR_DEBUNKED",
+        "category": "rumor",
+        "description": "Huhu kumotaan.",
+        "payload_schema": { "rumor_event_id": "STRING", "debunker": "STRING", "evidence": "STRING", "verified": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.6, "relationship_deltas": [{ "trust": 10, "respect": 6 }], "reputation_delta": 0.02 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "RUMOR_BACKFIRES",
+        "category": "conflict",
+        "description": "Huhun levittäjä jää kiinni.",
+        "payload_schema": { "spreader": "STRING", "harmed": "STRING", "proof": "STRING", "verified": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.85, "relationship_deltas": [{ "trust": -30, "respect": -10, "grievance": "gossiped" }], "reputation_delta": -0.06 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "RELATIONSHIP_FLIRT",
+        "category": "relationship",
+        "description": "Flirtti / kiinnostus näkyy.",
+        "payload_schema": { "from": "STRING", "to": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.55, "relationship_deltas": [{ "affection": 10, "trust": 3 }], "reputation_delta": 0.01 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "RELATIONSHIP_JEALOUSY_SPIKE",
+        "category": "relationship",
+        "description": "Mustasukkaisuus kasvaa.",
+        "payload_schema": { "jealous": "STRING", "about": "STRING", "trigger": "STRING" },
+        "effects": { "memory_importance_base": 0.6, "relationship_deltas": [{ "jealousy": 15 }], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "RELATIONSHIP_BREAK",
+        "category": "relationship",
+        "description": "Välirikko.",
+        "payload_schema": { "a": "STRING", "b": "STRING", "reason": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.9, "relationship_deltas": [{ "trust": -35, "affection": -30, "respect": -20, "grievance": "break" }], "reputation_delta": -0.02 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "RELATIONSHIP_RECONCILE",
+        "category": "relationship",
+        "description": "Sovinto.",
+        "payload_schema": { "a": "STRING", "b": "STRING", "how": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.8, "relationship_deltas": [{ "trust": 20, "affection": 15, "respect": 10, "grievance_soften": true }], "reputation_delta": 0.03 },
+        "render": { "default_channels": ["NEWS", "FEED"] }
+      },
+      {
+        "type": "LOST_ITEM_FOUND",
+        "category": "mystery",
+        "description": "Löydetään kadonnut esine.",
+        "payload_schema": { "finder": "STRING", "item": "STRING", "place_id": "STRING", "owner_guess": "STRING" },
+        "effects": { "memory_importance_base": 0.55, "relationship_deltas": [{ "trust": 6, "respect": 4 }], "reputation_delta": 0.02 },
+        "render": { "default_channels": ["NEWS", "CHAT"] }
+      },
+      {
+        "type": "THEFT_SUSPECTED",
+        "category": "mystery",
+        "description": "Epäillään varkautta.",
+        "payload_schema": { "reporter": "STRING", "item": "STRING", "place_id": "STRING", "suspects": "ARRAY_STRING" },
+        "effects": { "memory_importance_base": 0.8, "relationship_deltas": [], "reputation_delta": -0.02 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "THEFT_RESOLVED",
+        "category": "mystery",
+        "description": "Varkausepäily ratkeaa.",
+        "payload_schema": { "resolver": "STRING", "outcome": "STRING", "details": "STRING", "verified": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.85, "relationship_deltas": [{ "trust": 10, "respect": 10 }], "reputation_delta": 0.03 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "ACCIDENT_MINOR",
+        "category": "incident",
+        "description": "Pieni vahinko.",
+        "payload_schema": { "who": "STRING", "place_id": "STRING", "injury": "STRING", "helped_by": "ARRAY_STRING" },
+        "effects": { "memory_importance_base": 0.6, "relationship_deltas": [{ "trust": 6, "affection": 4 }], "reputation_delta": 0.01 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "POWER_OUTAGE",
+        "category": "incident",
+        "description": "Sähkökatko.",
+        "payload_schema": { "start_ts": "STRING_ISO", "duration_minutes": "NUMBER", "areas": "ARRAY_STRING" },
+        "effects": { "memory_importance_base": 0.7, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+
+      {
+        "type": "WORK_SHIFT_START",
+        "category": "work",
+        "description": "Työvuoro alkaa.",
+        "payload_schema": { "npc_id"STRING", "place_id": "STRING", "job": "STRING" },
+        "effects": { "memory_importance_base": 0.12, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [] }
+      },
+      {
+        "type": "WORK_SHIFT_END",
+        "category": "work",
+        "description": "Työvuoro päättyy.",
+        "payload_schema": { "npc_id": "STRING", "place_id": "STRING", "job": "STRING", "mood": "STRING" },
+        "effects": { "memory_importance_base": 0.12, "relationship_deltas": ["reputation_delta": 0.0 },
+        "render": { "default_channels": [] }
+      },
+      {
+        "type": "WORK_PRAISE",
+        "category": "work",
+        "description": "Työstä kehutaan.",
+        "payload_schema": { "from": "STRING", "to": "STRING", "for": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.45, "relationship_deltas": [{ "respect": 10, "trust": 6, "affection": 3 }], "reputation_delta": 0.03 },
+        "render": { "default_channels": ["FEED"] }
+      },
+    {
+        "type": "WORK_MISTAKE",
+        "category": "work",
+        "description": "Työvirhe aiheuttaa kitkaa (esim. tilaus sekaisin).",
+        "payload_schema": { "who": "STRING", "place_id": "STRING", "mistake": "STRING", "affected": "ARRAY_STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.6, "relationship_deltas": [{ "trust": -8, "respect": -6, "grievance": "work_mistake" }], "reputation_delta": -0.02 },
+        "render": { "default_channels": ["CHAT", "NEWS"] }
+      }
+
+      {
+        "type": "HOBBY_SESSION",
+        "category": "hobby",
+        "description": "Harrastushetki (treeni, käsityö, luonto).",
+        "payload_schema": { "npc_id": "STRING", "place_id": "STRING", "hobby": "STRING", "with": "ARRAY_STRING" },
+        "effects": { "memory_importance_base": 0.25, "relationship_deltas": [{ "affection": 2 }], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["FEED"] }
+      },
+      {
+        "type": "HOBBY_COMPETITION",
+        "category": "hobb,
+        "description": "Kisa/vertailu (kuka jaksoi, kuka sai parhaan saaliin).",
+        "payload_schema": { "a": "STRING", "b": "STRING", "domain": "STRING", "winner": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.55, "relationship_deltas": [{ "respect": 6, "jealousy": 8 }], "reputation_delta": 0.02 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+      {
+        "type": "HOBBY_INJURY",
+        "category": "incident",
+        "description": "Pieni loukkaantuminen harrastuksessa.",
+        "payload_schema": { "who": "STRING", "place_id": "STRING", "injury": "STRING", "witnesses": "ARRAY_STRING" },
+        "effects": { "memory_importance_base": 0.65, "relationship_deltas": [{ "affection": 3 }], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+
+      {
+        "type": "CUSTOMER_REVIEW_POSITIVE",
+        "category": "media",
+        "description": "Positiivinen palaute/kommentti (fiktiivinen).",
+        "payload_schema": { "about": "STRING", "place_or_brand": "STRING", "quote": "STRING", "verified": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.35, "relationship_deltas": [{ "trust": 4 }], "reputation_delta": 0.04 },
+        "render": { "default_channels": ["FEED"] }
+      },
+      {
+        "type": "CUSTOMER_REVIEW_NEGATIVE",
+        "category": "media",
+        "description": "Negatiivinen palaute/kommentti (fiktiivinen).",
+        "payload_schema": { "about": "STRING", "place_or_brand": "STRING", "quote": "STRING", "verified": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.55, "relationship_deltas": [{ "trust": -6 }], "reputation_delta": -0.05 },
+        "render": { "default_channels": ["CHAT", "NEWS"] }
+      },
+
+      {
+        "type": "LIVESTREAM_STARTED",
+        "category": "media",
+        "description": "NPC aloittaa liven (sisäinen tapahtuma).",
+        "payload_schema": { "host": "STRING", "place_id": "STRING", "topic": "STRING" },
+        "effects": { "memory_importance_base": 0.2, "rlationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [] }
+      },
+      {
+        "type": "LIVESTREAM_CLIP_MISUNDERSTOOD",
+        "category": "conflict",
+        "description": "Livestä irrotetaan klippi/väärinymmärrys (fiktiivinen).",
+        "payload_schema": { "host": "STRING", "clip_claim": "STRING", "target": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.8, "relationship_deltas": [{ "trust": -12, "respect": -12, "grievance"isrepresented" }], "reputation_delta": -0.03 },
+        "render": { "default_channels": ["NEWS", "CHAT"] }
+      },
+
+      {
+        "type": "COMMENT_WAR",
+        "category": "conflict",
+        "description": "Kommenttisota somessa (useita osapuolia).",
+        "payload_schema": { "initiator": "STRING", "participants": "ARRAY_STRING", "topic": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.75, "relationship_deltas": [{ "trust": -6, "respect": -6 }], "reputation_delta": -0.02 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "MOD_WARNING",
+        "category": "media",
+        "description": "Moderaattorihuomautus (järjestelmä).",
+        "payload_schema": { "who": "STRING", "channel": "STRING", "reason": "STRING" },
+        "effects": { "memory_importance_base": 0.35, "relationship_deltas": [], "reputation_delta": -0.01 },
+        "render": { "default_channels": [] }
+      },
+
+      {
+        "type": "WEATHER_SNOWSTORM",
+        "categy": "environment",
+        "description": "Lumipyry vaikuttaa liikkumiseen ja tunnelmaan.",
+        "payload_schema": { "start_ts": "STRING_ISO", "severity": "NUMBER_0_1", "note": "STRING" },
+        "effects": { "memory_importance_base": 0.45, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "WEATHER_HEATWAVE",
+        "category": "environment",
+        "description": "Helle vaikuttaa (sauna, kahvio, ärsyyntyminen).",        "payload_schema": { "start_ts": "STRING_ISO", "severity": "NUMBER_0_1", "note": "STRING" },
+        "effects": { "memory_importance_base": 0.4, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "ROAD_BLOCKED",
+        "category": "environment",
+        "description": "Tie/alue on hetkellisesti tukossa (vaikuttaa tapaamisiin).",
+        "payload_schema": { "place_id": "STRING", "duration_minutes": "NUMBER", "cause": "STRING" },
+        "effects": { "memory_importance_base": 0.35, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+
+      {
+        "type": "DELIVERY_DELAY",
+        "category": "economy",
+        "description": "Toimitus viivästyy (kahvio/yritys kärsii).",
+        "payload_schema": { "affected": "STRING", "what": "STRING", "delay_minutes": "NUMBER", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.55, "relationship_ltas": [{ "trust": -3 }], "reputation_delta": -0.02 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+
+      {
+        "type": "NOISE_COMPLAINT",
+        "category": "conflict",
+        "description": "Meluvalitus (kahvio, kylätalo, kenttä).",
+        "payload_schema": { "complainer": "STRING", "against": "STRING", "place_id": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.6, "relationship_deltas": [{ "trust": -8, "respect": -6, "grievance": "noise" }], "repation_delta": -0.01 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+
+      {
+        "type": "PARKING_DISPUTE",
+        "category": "conflict",
+        "description": "Parkkipaikkariita.",
+        "payload_schema": { "a": "STRING", "b": "STRING", "place_id": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.55, "relationship_deltas": [{ "trust": -6, "respect": -8, "grievance": "parking" }], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["CHAT"] }
+      },
+
+      {
+        "type": "SAUNA_ARGUMENT",
+        "category": "conflict",
+        "description": "Saunassa tulee sanomista (käytöstavat, vuorot).",
+        "payload_schema": { "a": "STRING", "b": "STRING", "topic": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.7, "relationship_deltas": [{ "trust": -10, "respect": -8, "grievance": "sauna_argument" }], "reputation_delta": -0.01 },
+        "render": { "default_channels": ["NEWS", "CHAT"] }
+      },
+      {       "type": "SAUNA_RECONCILIATION",
+        "category": "relationship",
+        "description": "Saunassa sovitaan (klassikko).",
+        "payload_schema": { "a": "STRING", "b": "STRING", "how": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.75, "relationship_deltas": [{ "trust": 12, "respect": 8, "affection": 6, "grievance_soften": true }], "reputation_delta": 0.02 },
+        "render": { "default_channels": ["FEED", "NEWS"] }
+      },
+
+      {
+        "type": "WATER_LEAK",
+        "category": "incident",
+        "description": "Vesivuoto aiheuttaa hässäkkää.",
+        "payload_schema": { "place_id": "STRING", "severity": "NUMBER_0_1", "reported_by": "STRING" },
+        "effects": { "memory_importance_base": 0.75, "relationship_deltas": [{ "trust": 2 }], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+      {
+        "type": "FIRE_ALARM_FALSE",
+        "category": "incident",
+        "description": "Palohälytys (väärä).",
+    load_schema": { "place_id": "STRING", "trigger": "STRING", "witnesses": "ARRAY_STRING" },
+        "effects": { "memory_importance_base": 0.65, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["NEWS"] }
+      },
+
+      {
+        "type": "LOST_PET",
+        "category": "mystery",
+        "description": "Lemmikki karkaa (kylä mobilisoituu).",
+        "payload_schema": { "owner": "STRING", "pet": "STRING", "last_seen_place_id": "STRING" },
+        "effects": { "memry_importance_base": 0.7, "relationship_deltas": [{ "affection": 2 }], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["NEWS", "CHAT"] }
+      },
+      {
+        "type": "PET_FOUND",
+        "category": "community",
+        "description": "Lemmikki löytyy (helpotus).",
+        "payload_schema": { "finder": "STRING", "owner": "STRING", "pet": "STRING", "place_id": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.8, "relationship_deltas": [{ "trust": 12, "ffection": 10, "respect": 6 }], "reputation_delta": 0.03 },
+        "render": { "default_channels": ["NEWS", "FEED"] }
+      },
+
+      {
+        "type": "CHARITY_DRIVE",
+        "category": "community",
+        "description": "Hyväntekeväisyyskampanja / keräys.",
+        "payload_schema": { "organizer": "STRING", "cause": "STRING", "goal_amount": "NUMBER" },
+        "effects": { "memory_importance_base": 0.4, "relationship_deltas": [{ "respect": 4 }], "reputation_delta": 0.02 },
+        "render": { "defa_channels": ["NEWS"] }
+      },
+      {
+        "type": "FUNDRAISER_DRAMA",
+        "category": "conflict",
+        "description": "Keräyksestä syntyy kinaa (läpinäkyvyys, epäilyt).",
+        "payload_schema": { "accuser": "STRING", "organizer": "STRING", "claim": "STRING", "public": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.8, "relationship_deltas": [{ "trust": -10, "respect": -8, "grievance": "fundraiser_drama" }], "reputation_delta": -0.02 },
+        "render": { "default_channelsNEWS"] }
+      },
+
+      {
+        "type": "FEED_POSTED",
+        "category": "media",
+        "description": "NPC julkaisee feed-postauksen.",
+        "payload_schema": { "author": "STRING", "source_event_id": "STRING", "text": "STRING", "tone": "STRING", "tags": "ARRAY_STRING" },
+        "effects": { "memory_importance_base": 0.3, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [] }
+      },
+      {
+        "type": "CHAT_MESSAGE_SENT",
+        "category": "media",
+        "description": "NPC lähettää chat-viestin.",
+        "payload_schema": { "author": "STRING", "chat_room": "STRING", "source_event_id": "STRING", "text": "STRING", "tone": "STRING" },
+        "effects": { "memory_importance_base": 0.2, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [] }
+      },
+      {
+        "type": "NEWS_PUBLISHED",
+        "category": "media",
+        "description": "Uutispäivitys julkaistaan.",
+        "payload_schema": { tor": "STRING", "headline": "STRING", "body": "STRING", "source_event_ids": "ARRAY_STRING", "verified": "BOOLEAN" },
+        "effects": { "memory_importance_base": 0.3, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [] }
+      }
+    ]
+  },
+  "impact_scoring": {
+    "formula": "impact = 0.30*novelty + 0.25*conflict + 0.20*publicness + 0.15*status_of_people + 0.10*cascade_potential",
+    "channel_thresholds": { "CHAT": 0.25, "FEED": 0.40, "NEWS": 0.65 },
+    "notes": "NEWS käyttää vain verified=true -eventtejä vahvistettuna; rumor-eventit aina 'epävarmana'."
+  },
+  "content_generation_prompts": {
+    "output_contract": {
+      "must_output_json_only": true,
+      "common_fields": ["channel", "author_id", "source_event_id", "text", "tone", "tags", "safety_notes"],
+      "tone_enum": ["friendly", "neutral", "defensive", "snarky", "concerned", "formal", "hyped"]
+    },
+    "feed_prompt": {
+      "system": "Olet fiktiivisen suomalaisen kylän NPC-hahmo. Kirjoita lomepäivitys hahmon tyylillä. Älä mainitse olevasi tekoäly. Älä väitä mitään todellisista ihmisistä tai todellisista tapahtumista. Ei linkkejä. Ei vihapuhetta. Ei seksuaalista sisältöä. Jos lähde on huhu, vihjaa epävarmuus.",
+      "inputs": ["author_profile", "source_event", "recent_relationships_summary", "author_goal_top", "publicness"],
+      "constraints": { "length_chars_max": 280, "no_urls": true },
+      "template": {
+        "channel": "FEED",
+        "author_id": "{{author_profiled}}",
+        "source_event_id": "{{source_event.id}}",
+        "tone": "{{tone}}",
+        "text": "{{generated_text}}",
+        "tags": ["{{tag1}}", "{{tag2}}"],
+        "safety_notes": "{{if_any_issue_found}}"
+      }
+    },
+    "chat_prompt": {
+      "system": "Olet fiktiivisen suomalaisen kylän NPC-hahmo ryhmächätissä. Vastaa lyhyesti ja reaktiivisesti. Älä mainitse olevasi tekoäly. Älä levitä huhua faktana. Ei maalittamista tai joukkohyökkäystä. Ei linkkejä.",
+      "inputs": ["author_prroom_context", "source_event", "last_5_messages", "relationship_to_targets"],
+      "constraints": { "length_chars_max": 220, "no_urls": true, "avoid_dogpiling": true },
+      "template": {
+        "channel": "CHAT",
+        "author_id": "{{author_profile.id}}",
+        "source_event_id": "{{source_event.id}}",
+        "tone": "{{tone}}",
+        "text": "{{generated_text}}",
+        "tags": ["{{tag1}}"],
+        "safety_notes": "{{if_any_issue_found}}"
+      }
+    },
+    "news_prompt": {
+      "system": "Olet fiktiivisen paikallislehden toimittaja. Tee neutraali uutispäivitys vahvistetuista tapahtumista. Huhut merkitään epävarmoiksi. Pidä tiiviinä. Ei linkkejä.",
+      "inputs": ["editor_profile", "top_events_window", "verification_notes", "impact_scores"],
+      "constraints": { "headline_chars_max": 70, "body_chars_max": 480, "must_note_uncertainty": true },
+      "template": {
+        "channel": "NEWS",
+        "author_id": "{{editor_profile.id}}",
+        "source_event_id": "{{primary_event_id}}",  "tone": "formal",
+        "text": "{{headline}} — {{body}}",
+        "tags": ["uutiset", "{{tag1}}"],
+        "safety_notes": "{{if_any_issue_found}}"
+      }
+    }
+  },
+  "day1_seed_scenario": {
+    "date_local": "2025-12-12",
+    "notes": "Tämä on ajettava eventtijonona. Eventit tuottavat suoraan some/chat/news-sisältöä impact-thresholdien ja roolien mukaan.",
+    "events": [
+      {
+        "id": "evt_d1_001",
+        "ts_local": "2025-12-12T08:10:00",
+        "place_id": "place_kylatalo",
+     e": "TALKOOS_ANNOUNCED",
+        "actors": ["npc_jari"],
+        "targets": [],
+        "publicness": 0.9,
+        "severity": 0.25,
+        "payload": { "announcer": "npc_jari", "date": "2025-12-14", "task": "Kylätalon varaston siivous + pihan kolaus" }
+      },
+      {
+        "id": "evt_d1_002",
+        "ts_local": "2025-12-12T08:25:00",
+        "place_id": "place_kahvio",
+        "type": "WORK_SHIFT_START",
+        "actors": ["npc_sanni"],
+        "targets": [],
+        "publicness": 0.1,
+        "seveity": 0.05,
+        "payload": { "npc_id": "npc_sanni", "place_id": "place_kahvio", "job": "kahvio" }
+      },
+      {
+        "id": "evt_d1_003",
+        "ts_local": "2025-12-12T09:05:00",
+        "place_id": "place_tori",
+        "type": "TORI_SPOT_ASSIGNED",
+        "actors": ["npc_jari"],
+        "targets": ["npc_miia", "npc_kaisa"],
+        "publicness": 0.8,
+        "severity": 0.35,
+        "payload": { "assigned_by": "npc_jari", "vendor": "npc_miia", "spot_rank": 1 }
+      },
+      {
+        "id": "evt_d1_004",
+        "ts_local": "2025-12-12T09:06:00",
+        "place_id": "place_tori",
+        "type": "TORI_SPOT_ASSIGNED",
+        "actors": ["npc_jari"],
+        "targets": ["npc_kaisa"],
+        "publicness": 0.8,
+        "severity": 0.35,
+        "payload": { "assigned_by": "npc_jari", "vendor": "npc_kaisa", "spot_rank": 3 }
+      },
+      {
+        "id": "evt_d1_005",
+        "ts_local": "2025-12-12T09:18:00",
+        "place_id": "place_tori",
+        "type": "TORI_SPOT_DISPUTE",
+        "actors": ["npc_miia", "npc_kaisa"],
+        "targets": ["npc_jari"],
+        "publicness": 0.85,
+        "severity": 0.55,
+        "payload": { "a": "npc_miia", "b": "npc_kaisa", "spot_rank": 1, "public": true }
+      },
+      {
+        "id": "evt_d1_006",
+        "ts_local": "2025-12-12T10:02:00",
+        "place_id": "place_paja",
+        "type": "BORROW_REQUEST",
+        "actors": ["npc_osku"],
+        "targets": ["npc_jari"],
+        "publicness": 0.3,
+        "severity": 0.25,
+        "payload": { "borrower": "npc_osku", "lender": "npc_jari", "item": "peräkärry", "duration_hours": 6 }
+      },
+      {
+        "id": "evt_d1_007",
+        "ts_local": "2025-12-12T10:05:00",
+        "place_id": "place_paja",
+        "type": "HELP_REQUEST",
+        "actors": ["npc_osku"],
+        "targets": ["npc_sanni"],
+        "publicness": 0.2,
+        "severity": 0.2,
+        "payload": { "from": "npc_osku", "to": "npc_sanni", "need": "pieni laina tai kahvi velaksi (tänään tiukka)", "urgency": 0.4 }
+      },
+      {
+        ""evt_d1_008",
+        "ts_local": "2025-12-12T11:12:00",
+        "place_id": "place_kahvio",
+        "type": "WORK_MISTAKE",
+        "actors": ["npc_sanni"],
+        "targets": ["npc_noora"],
+        "publicness": 0.7,
+        "severity": 0.45,
+        "payload": { "who": "npc_sanni", "place_id": "place_kahvio", "mistake": "tilausteksti meni väärin ja asiakkaan nimilappu näkyi pöydällä", "affected": ["npc_noora"], "public": true }
+      },
+      {
+        "id": "evt_d1_009",
+        "ts_local": "2025-11:25:00",
+        "place_id": "place_kahvio",
+        "type": "SMALL_TALK",
+        "actors": ["npc_leena"],
+        "targets": ["npc_noora"],
+        "publicness": 0.3,
+        "severity": 0.1,
+        "payload": { "from": "npc_leena", "to": "npc_noora", "topic": "rauhoittelu ja oikaisu" }
+      },
+      {
+        "id": "evt_d1_010",
+        "ts_local": "2025-12-12T12:05:00",
+        "place_id": "place_kentta",
+        "type": "HOBBY_COMPETITION",
+        "actors": ["npc_riku"],
+        "targets": ["npc_kaisa"],
+        "publicness": 0.6,
+        "severity": 0.3,
+        "payload": { "a": "npc_riku", "b": "npc_kaisa", "domain": "kuntoilu/haaste", "winner": "npc_riku", "public": true }
+      },
+      {
+        "id": "evt_d1_011",
+        "ts_local": "2025-12-12T12:20:00",
+        "place_id": "place_kahvio",
+        "type": "INSULT",
+        "actors": ["npc_riku"],
+        "targets": ["npc_jari"],
+        "publicness": 0.85,
+        "severity": 0.55,
+        "payload": { "from": "npc_riku", "to": "npc_jari", "line": "Onko tää nyt taas sitä listapeliä vai voitasko elää?", "public": true }
+      },
+      {
+        "id": "evt_d1_012",
+        "ts_local": "2025-12-12T12:33:00",
+        "place_id": "place_kahvio",
+        "type": "APOLOGY",
+        "actors": ["npc_sanni"],
+        "targets": ["npc_jari"],
+        "publicness": 0.5,
+        "severity": 0.25,
+        "payload": { "from": "npc_sanni", "to": "npc_jari", "for_event_id": "evt_d1_011", "sincerity": 0.7 }
+      },
+      {
+        "id": "evt_d1_013",
+  "ts_local": "2025-12-12T13:10:00",
+        "place_id": "place_kauppa",
+        "type": "RUMOR_CREATED",
+        "actors": ["npc_aila"],
+        "targets": ["npc_noora"],
+        "publicness": 0.9,
+        "severity": 0.5,
+        "payload": {
+          "source_event_id": "evt_d1_008",
+          "spreader": "npc_aila",
+          "about": "npc_noora",
+          "distortion": 0.45,
+          "claim": "Kuulin että Kahviolla oli 'aika nolo' juttu Noorasta – en sano enempää."
+        }
+      },
+      {
+    id": "evt_d1_014",
+        "ts_local": "2025-12-12T14:00:00",
+        "place_id": "place_huoltsikka",
+        "type": "PARKING_DISPUTE",
+        "actors": ["npc_osku", "npc_timo"],
+        "targets": [],
+        "publicness": 0.65,
+        "severity": 0.35,
+        "payload": { "a": "npc_osku", "b": "npc_timo", "place_id": "place_huoltsikka", "public": true }
+      },
+      {
+        "id": "evt_d1_015",
+        "ts_local": "2025-12-12T15:30:00",
+        "place_id": "place_metsa",
+        "type": "HOBBY_SESSION",
+        "actors": ["npc_eero"],
+        "targets": ["npc_kaisa"],
+        "publicness": 0.2,
+        "severity": 0.2,
+        "payload": { "npc_id": "npc_eero", "place_id": "place_metsa", "hobby": "luonto/kävely", "with": ["npc_kaisa"] }
+      },
+      {
+        "id": "evt_d1_016",
+        "ts_local": "2025-12-12T16:10:00",
+        "place_id": "place_kahvio",
+        "type": "CUSTOMER_REVIEW_NEGATIVE",
+        "actors": ["npc_sanni"],
+        "targets": [],
+        "publicness": 0.9,
+        "severit": 0.45,
+        "payload": { "about": "npc_sanni", "place_or_brand": "Kahvio Kaneli", "quote": "Palvelu oli tänään vähän sekaisin.", "verified": true }
+      },
+      {
+        "id": "evt_d1_017",
+        "ts_local": "2025-12-12T17:05:00",
+        "place_id": "place_sauna",
+        "type": "SAUNA_ARGUMENT",
+        "actors": ["npc_jari", "npc_kaisa"],
+        "targets": [],
+        "publicness": 0.55,
+        "severity": 0.45,
+        "payload": { "a": "npc_jari", "b": "npc_kaisa", "topic": "kylän sÃs uusi energia", "public": true }
+      },
+      {
+        "id": "evt_d1_018",
+        "ts_local": "2025-12-12T18:10:00",
+        "place_id": "place_sauna",
+        "type": "SAUNA_RECONCILIATION",
+        "actors": ["npc_leena", "npc_jari", "npc_kaisa"],
+        "targets": [],
+        "publicness": 0.5,
+        "severity": 0.35,
+        "payload": { "a": "npc_jari", "b": "npc_kaisa", "how": "Leena ohjaa keskustelua, sovitaan pelisäännöistä", "public": true }
+      },
+      {
+        "id": "evt_d1_019",     "ts_local": "2025-12-12T19:30:00",
+        "place_id": "place_kylatalo",
+        "type": "POWER_OUTAGE",
+        "actors": [],
+        "targets": [],
+        "publicness": 0.95,
+        "severity": 0.6,
+        "payload": { "start_ts": "2025-12-12T19:30:00+02:00", "duration_minutes": 35, "areas": ["kylätalo", "tori"] }
+      },
+      {
+        "id": "evt_d1_020",
+        "ts_local": "2025-12-12T21:00:00",
+        "place_id": "place_kylatalo",
+        "type": "NEWS_PUBLISHED",
+        "actors": ["npc_ptri"],
+        "targets": [],
+        "publicness": 1.0,
+        "severity": 0.4,
+        "payload": {
+          "editor": "npc_petri",
+          "headline": "Toripaikat ja talkoot puhuttavat – illalla myös sähkökatko",
+          "body": "Koivulahdessa toripaikkojen jako herätti keskustelua ja kylätalon talkoista käytiin vilkasta viestittelyä. Kahviolla sattui pieni palvelutilanteen sekaannus, jonka jälkeen huhut lähtivät elämään. Illalla kylätalon ja torin alueella koettiin lyhyt sähkökat. Tilanteet jatkuvat todennäköisesti viikonlopun aikana.",
+          "source_event_ids": ["evt_d1_001", "evt_d1_003", "evt_d1_005", "evt_d1_008", "evt_d1_013", "evt_d1_019"],
+          "verified": true
+        }
+      }
+    ]
+  }
+}
+
