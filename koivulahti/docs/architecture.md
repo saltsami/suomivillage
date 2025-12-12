@@ -49,12 +49,12 @@ graph TB
     TEST -->|HTTP| API
     TEST -->|HTTP| GATE
 
-    style ENG fill:#e1f5ff
-    style WORK fill:#fff4e1
-    style GATE fill:#f0e1ff
-    style API fill:#e1ffe1
-    style PG fill:#ffe1e1
-    style RD fill:#ffe1e1
+    style ENG fill:#b3d9ff,stroke:#333,stroke-width:2px,color:#000
+    style WORK fill:#ffd9b3,stroke:#333,stroke-width:2px,color:#000
+    style GATE fill:#e0b3ff,stroke:#333,stroke-width:2px,color:#000
+    style API fill:#b3ffb3,stroke:#333,stroke-width:2px,color:#000
+    style PG fill:#ffb3b3,stroke:#333,stroke-width:2px,color:#000
+    style RD fill:#ffb3b3,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Services
@@ -138,10 +138,10 @@ flowchart TD
     SLEEP --> INC[tick_index += 1]
     INC --> TICK_START
 
-    style START fill:#e1f5ff
-    style GEN_ROUTINE fill:#fff4e1
-    style PROCESS fill:#ffe1e1
-    style ADVANCE fill:#e1ffe1
+    style START fill:#b3d9ff,stroke:#333,stroke-width:2px,color:#000
+    style GEN_ROUTINE fill:#ffd9b3,stroke:#333,stroke-width:2px,color:#000
+    style PROCESS fill:#ffb3b3,stroke:#333,stroke-width:2px,color:#000
+    style ADVANCE fill:#b3ffb3,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Impact Scoring System
@@ -171,10 +171,10 @@ graph LR
     THRESH -->|>= 0.8| NEWS[Enqueue NEWS]
     THRESH -->|< threshold| SKIP[No render job]
 
-    style SCORE fill:#fff4e1
-    style CHAT fill:#e1ffe1
-    style FEED fill:#e1ffe1
-    style NEWS fill:#ffe1e1
+    style SCORE fill:#ffd9b3,stroke:#333,stroke-width:2px,color:#000
+    style CHAT fill:#b3ffb3,stroke:#333,stroke-width:2px,color:#000
+    style FEED fill:#b3ffb3,stroke:#333,stroke-width:2px,color:#000
+    style NEWS fill:#ffb3b3,stroke:#333,stroke-width:2px,color:#000
 ```
 
 ## Data Models Overview
