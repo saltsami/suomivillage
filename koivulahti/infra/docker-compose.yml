@@ -1,0 +1,124 @@
+name: koivulahti
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # GPU LLM server (llama.cpp)
+  llm-server:
+    profiles: ["gpu"]
+    image: ghcr.io/ggerganov/llama.cpp:server-cuda
+    command: >
+      -m ${LLM_MODEL_PATH}
+      -c ${LLM_CONTEXT}
+      --host 0.0.0.0
+      --port 8080
+      --n-gpu-layers 99
+      --threads 8
+    volumes:
+      - ../models:/models:ro
+    ports:
+      - "8080:8080"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - capabilities: ["gpu"]
+
+  llm-gateway:
+    build:
+      context: ..
+      dockerfile: services/llm_gateway/Dockerfile
+    environment:
+      ENV: ${ENV}
+      LLM_PROVIDER: ${LLM_PROVIDER}
+      LLM_SERVER_URL: http://llm-server:8080
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE}
+      REDIS_URL: ${REDIS_URL}
+    depends_on:
+      redis:
+        condition: service_healthy
+      llm-server:
+        condition: service_started
+    ports:
+      - "8081:8081"
+
+  api:
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+    environment:
+      ENV: ${ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      LLM_GATEWAY_URL: ${LLM_GATEWAY_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8082:8082"
+
+  engine:
+    build:
+      context: ..
+      dockerfile: services/engine/Dockerfile
+    environment:
+      ENV: ${ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      RENDER_QUEUE: ${RENDER_QUEUE}
+      SIM_SEED: ${SIM_SEED}
+      SIM_TICK_MS: ${SIM_TICK_MS}
+      IMPACT_THRESHOLD_FEED: ${IMPACT_THRESHOLD_FEED}
+      IMPACT_THRESHOLD_CHAT: ${IMPACT_THRESHOLD_CHAT}
+      IMPACT_THRESHOLD_NEWS: ${IMPACT_THRESHOLD_NEWS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  workers:
+    build:
+      context: ..
+      dockerfile: services/workers/Dockerfile
+    environment:
+      ENV: ${ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      RENDER_QUEUE: ${RENDER_QUEUE}
+      LLM_GATEWAY_URL: ${LLM_GATEWAY_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
