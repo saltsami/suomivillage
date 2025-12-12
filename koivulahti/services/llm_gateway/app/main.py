@@ -1,7 +1,10 @@
-from typing import Any, Dict, Optional
+import json
+import re
+from typing import Any, Dict, Optional, Tuple
 
 import httpx
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from packages.shared.settings import Settings
@@ -9,6 +12,22 @@ from packages.shared.settings import Settings
 settings = Settings()
 client = httpx.AsyncClient(timeout=30.0)
 app = FastAPI(title="Koivulahti LLM Gateway", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+SYSTEM_JSON_INSTRUCTION = (
+    "Olet Koivulahti-kyläsimulaation sisällöntuottaja. Vastaa VAIN JSON-objektina "
+    "ilman selityksiä tai koodiblokkeja.\n"
+    "JSON-kentät: channel, author_id, source_event_id, tone, text, tags, safety_notes.\n"
+    "tone on yksi: friendly, neutral, defensive, snarky, concerned, formal, hyped.\n"
+    "tags on lista lyhyitä tageja, safety_notes voi olla null."
+)
 
 
 class GenerateRequest(BaseModel):
@@ -40,16 +59,181 @@ async def health() -> dict[str, str]:
     return {"status": "ok", "env": settings.env}
 
 
-@app.post("/generate", response_model=GenerateResponse)
-async def generate(request: GenerateRequest) -> GenerateResponse:
-    # Placeholder adapter: echoes deterministic JSON instead of calling a real model.
-    tone = "neutral"
-    text = f"[stub] channel={request.channel} event={request.source_event_id} prompt={request.prompt[:80]}"
+def build_messages(request: GenerateRequest) -> list[dict[str, str]]:
+    return [
+        {"role": "system", "content": SYSTEM_JSON_INSTRUCTION},
+        {"role": "user", "content": request.prompt},
+    ]
+
+
+def merge_system_into_user(messages: list[dict[str, str]]) -> list[dict[str, str]]:
+    parts: list[str] = []
+    for message in messages:
+        role = message.get("role")
+        content = message.get("content")
+        if role in {"system", "user"} and content:
+            parts.append(str(content))
+    merged = "\n\n".join(parts).strip()
+    return [{"role": "user", "content": merged}]
+
+
+async def call_llama_cpp(
+    request: GenerateRequest, temperature: float, messages: list[dict[str, str]]
+) -> Tuple[Dict[str, Any], str]:
+    base = settings.llm_server_url.rstrip("/")
+    payload: Dict[str, Any] = {
+        "model": "local-model",
+        "messages": messages,
+        "temperature": temperature,
+        "max_tokens": settings.llm_max_tokens,
+        "stream": False,
+    }
+    try:
+        resp = await client.post(f"{base}/v1/chat/completions", json=payload)
+        if resp.status_code == 400:
+            err_text = resp.text or ""
+            if (
+                "Only user and assistant roles are supported" in err_text
+                or "Conversation roles must alternate" in err_text
+            ):
+                payload["messages"] = merge_system_into_user(messages)
+                resp = await client.post(f"{base}/v1/chat/completions", json=payload)
+        if resp.status_code == 404:
+            raise httpx.HTTPStatusError("not found", request=resp.request, response=resp)
+        resp.raise_for_status()
+        return resp.json(), "chat"
+    except httpx.HTTPStatusError:
+        # Fallback to text completion endpoints.
+        full_prompt = merge_system_into_user(messages)[0]["content"]
+        completion_payload = {
+            "model": "local-model",
+            "prompt": full_prompt,
+            "temperature": temperature,
+            "max_tokens": settings.llm_max_tokens,
+            "stream": False,
+        }
+        resp = await client.post(f"{base}/v1/completions", json=completion_payload)
+        if resp.status_code == 404:
+            resp = await client.post(
+                f"{base}/completion",
+                json={
+                    "prompt": full_prompt,
+                    "temperature": temperature,
+                    "n_predict": settings.llm_max_tokens,
+                    "stream": False,
+                },
+            )
+        resp.raise_for_status()
+        return resp.json(), "completion"
+
+
+def extract_text(llama_data: Dict[str, Any]) -> str:
+    choices = llama_data.get("choices")
+    if isinstance(choices, list) and choices:
+        first = choices[0] or {}
+        if isinstance(first, dict):
+            message = first.get("message")
+            if isinstance(message, dict) and "content" in message:
+                return str(message.get("content") or "")
+            if "text" in first:
+                return str(first.get("text") or "")
+    if "content" in llama_data:
+        return str(llama_data.get("content") or "")
+    if "completion" in llama_data:
+        return str(llama_data.get("completion") or "")
+    return ""
+
+
+def extract_json(text: str) -> Dict[str, Any] | None:
+    candidate = text.strip()
+    if not candidate:
+        return None
+    try:
+        parsed = json.loads(candidate)
+        if isinstance(parsed, dict):
+            return parsed
+    except json.JSONDecodeError:
+        pass
+    match = re.search(r"\{.*\}", candidate, re.DOTALL)
+    if not match:
+        return None
+    try:
+        parsed = json.loads(match.group(0))
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        return None
+
+
+def normalize_response(raw: Dict[str, Any], request: GenerateRequest, fallback_text: str) -> GenerateResponse:
+    channel = str(raw.get("channel") or request.channel)
+    author_id = str(raw.get("author_id") or request.author_id)
+    source_event_id = str(raw.get("source_event_id") or request.source_event_id)
+    tone = str(raw.get("tone") or "neutral")
+    text = str(raw.get("text") or fallback_text or "")
+
+    tags_val = raw.get("tags") or []
+    tags: list[str]
+    if isinstance(tags_val, str):
+        try:
+            parsed = json.loads(tags_val)
+            tags = [str(t) for t in parsed] if isinstance(parsed, list) else [tags_val]
+        except json.JSONDecodeError:
+            tags = [tags_val]
+    elif isinstance(tags_val, list):
+        tags = [str(t) for t in tags_val if t is not None]
+    else:
+        tags = []
+
+    safety_notes_val = raw.get("safety_notes")
+    safety_notes = str(safety_notes_val) if safety_notes_val is not None else None
     return GenerateResponse(
-        channel=request.channel,
-        author_id=request.author_id,
-        source_event_id=request.source_event_id,
+        channel=channel,
+        author_id=author_id,
+        source_event_id=source_event_id,
         tone=tone,
         text=text,
-        tags=["stub"],
+        tags=tags,
+        safety_notes=safety_notes,
     )
+
+
+@app.post("/generate", response_model=GenerateResponse)
+async def generate(request: GenerateRequest) -> GenerateResponse:
+    if settings.llm_provider != "llama_cpp":
+        raise HTTPException(status_code=501, detail=f"Unsupported LLM_PROVIDER: {settings.llm_provider}")
+
+    temperature = request.temperature if request.temperature is not None else settings.llm_temperature
+    messages = build_messages(request)
+    try:
+        llama_data, mode = await call_llama_cpp(request, temperature, messages)
+    except Exception as e:
+        print(f"[llm-gateway] LLM call failed: {e}")
+        raise HTTPException(status_code=502, detail="LLM server error")
+
+    raw_text = extract_text(llama_data)
+    raw_json = extract_json(raw_text)
+
+    if not raw_json:
+        return GenerateResponse(
+            channel=request.channel,
+            author_id=request.author_id,
+            source_event_id=request.source_event_id,
+            tone="neutral",
+            text=raw_text or request.prompt[:200],
+            tags=[],
+            safety_notes=f"model_output_not_json (mode={mode})",
+        )
+
+    try:
+        return normalize_response(raw_json, request, raw_text)
+    except Exception as e:
+        print(f"[llm-gateway] normalize failed: {e}")
+        return GenerateResponse(
+            channel=request.channel,
+            author_id=request.author_id,
+            source_event_id=request.source_event_id,
+            tone=str(raw_json.get("tone") or "neutral"),
+            text=str(raw_json.get("text") or raw_text or request.prompt[:200]),
+            tags=[],
+            safety_notes="schema_validation_failed",
+        )

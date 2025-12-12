@@ -2,6 +2,7 @@ from typing import List
 
 import asyncpg
 from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
 
 from packages.shared.db import create_pool, get_connection
 from packages.shared.schemas import Event, Post
@@ -9,6 +10,15 @@ from packages.shared.settings import Settings
 
 settings = Settings()
 app = FastAPI(title="Koivulahti API", version="0.1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 pool: asyncpg.Pool | None = None
 
 
