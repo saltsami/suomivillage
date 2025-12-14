@@ -1,6 +1,6 @@
 # Current Status & Next Steps (Live)
 
-Updated: 2025-12-12 (End of Session)
+Updated: 2025-12-14
 
 ## What's implemented now
 
@@ -24,6 +24,7 @@ Updated: 2025-12-12 (End of Session)
   - NPC round-robin selection (deterministic)
   - 3 event types: LOCATION_VISIT, SMALL_TALK, CUSTOMER_INTERACTION
   - Place matching by type (sauna/beach, cafe, shop)
+  - **Restart resilient**: Resumes from last tick index in DB
 - ✅ **Impact scoring system** (novelty, conflict, publicness, status, cascade potential)
 - ✅ **Event effects** applied to relationships and memories
 - ✅ Enqueues render jobs to Redis based on impact thresholds
@@ -136,6 +137,30 @@ curl http://localhost:8082/events?limit=5
     - NPC profiles & relationships
     - Live feed/chat/news streams
     - Relationship graph visualization
+
+## Session Summary (2025-12-14)
+
+**Bugfix: Engine restart event generation**
+
+Problem discovered:
+- Simulation had stopped generating events ~2 days ago
+- Engine was running but no new events in database
+- Root cause: DNS failure crashed engine, on restart `tick_index` started from 0
+- Event IDs like `evt_routine_{tick}_{npc}` already existed in DB
+- `ON CONFLICT DO NOTHING` silently rejected all new events
+
+Fix applied (`runner.py`):
+- Added `fetch_latest_tick_index()` to query max tick from existing events
+- Engine now resumes from `last_tick + 1` instead of 0
+- RNG state advanced to match resumed position for determinism
+- Log now shows `resume_tick=N` on startup
+
+Verification:
+- Events resuming from tick 19141 (was stuck at 19140)
+- New events confirmed in database with current timestamps
+- Commit: `91e1bcf Fix engine restart not generating new events`
+
+---
 
 ## Session Summary (2025-12-12)
 
