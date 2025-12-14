@@ -155,10 +155,31 @@ Fix applied (`runner.py`):
 - RNG state advanced to match resumed position for determinism
 - Log now shows `resume_tick=N` on startup
 
-Verification:
-- Events resuming from tick 19141 (was stuck at 19140)
-- New events confirmed in database with current timestamps
-- Commit: `91e1bcf Fix engine restart not generating new events`
+**GPU LLM Server activation**
+
+- Switched from CPU to GPU llama.cpp server
+- Updated `.env`: `LLM_SERVER_URL=http://llm-server-gpu:8080`
+- Flash Attention enabled, 4 parallel slots
+
+**Missing event types added**
+
+- Added `LOCATION_VISIT` and `CUSTOMER_INTERACTION` to `event_types.json`
+- These routine events now have render channels (FEED) configured
+- Lowered impact thresholds for more realistic posting behavior:
+  - FEED: 0.6 → 0.15
+  - CHAT: 0.4 → 0.10
+  - NEWS: 0.8 → 0.5
+
+**Full pipeline verified working**
+
+- Engine → Redis queue → Workers → LLM Gateway → GPU → Posts in DB
+- 40+ posts generated during testing
+- Pipeline processes ~1 event/second with GPU acceleration
+
+**Known issues for next session:**
+- Some posts have malformed channel names (prompt parsing issue)
+- LLM sometimes outputs English or raw event data instead of Finnish posts
+- Prompt templates need refinement for better content quality
 
 ---
 

@@ -532,6 +532,22 @@
         "render": { "default_channels": [] }
       },
       {
+        "type": "LOCATION_VISIT",
+        "category": "movement",
+        "description": "NPC vierailee paikassa ja jakaa arkisen hetken.",
+        "payload_schema": { "npc_id": "STRING", "place_id": "STRING" },
+        "effects": { "memory_importance_base": 0.1, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["FEED"], "tone_hint": "casual" }
+      },
+      {
+        "type": "CUSTOMER_INTERACTION",
+        "category": "economy",
+        "description": "Asiakas asioi kaupassa tai kahvilassa.",
+        "payload_schema": { "customer": "STRING", "place_id": "STRING", "purchase": "STRING" },
+        "effects": { "memory_importance_base": 0.12, "relationship_deltas": [{ "trust": 1 }], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["FEED"], "tone_hint": "casual" }
+      },
+      {
         "type": "SMALL_TALK",
         "category": "social",
         "description": "Kevyt keskustelu.",
