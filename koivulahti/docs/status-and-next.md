@@ -7,7 +7,7 @@ Updated: 2025-12-14
 ### Infrastructure & Setup
 - ✅ Repo scaffold per `repo_structure.txt`
 - ✅ `infra/docker-compose.yml` with CPU/GPU llama.cpp profiles
-- ✅ `infra/.env` configured for CPU mode with Mistral 7B model
+- ✅ `infra/.env` configured for **GPU mode** with Mistral 7B model
 - ✅ Migrations: `001_init.sql` (events/posts/jobs), `002_kickoff_tables.sql` (entities/profiles/relationships/memories/goals)
 
 ### Shared Packages
@@ -46,6 +46,12 @@ Updated: 2025-12-14
 - ✅ `/health`, `/posts`, `/events` read endpoints
 - ✅ CORS middleware
 - ✅ Admin endpoints stubbed
+
+### Tools (`tools/`)
+- ✅ **`village_monitor.py`** - CLI activity feed for debugging
+  - Live terminal view of events and posts
+  - Filter by NPC, event type, channel
+  - Usage: `./tools/village_monitor.py --live`
 
 ### Testing & Documentation
 - ✅ Smoke tests passing (API health, events, posts, LLM gateway)
@@ -176,7 +182,18 @@ Fix applied (`runner.py`):
 - 40+ posts generated during testing
 - Pipeline processes ~1 event/second with GPU acceleration
 
-**Known issues for next session:**
+**Village monitor tool added**
+
+- `tools/village_monitor.py` - CLI for real-time activity feed
+- Shows events and posts side-by-side with colors
+- Supports `--live` mode, filtering by `--npc`, `--type`, `--channel`
+
+**Next session priorities:**
+1. 🔥 Fix prompt templates for proper Finnish content
+2. 🔥 Fix channel parsing (posts showing wrong channel names)
+3. Consider: Add more dramatic event types for variety
+
+**Known issues:**
 - Some posts have malformed channel names (prompt parsing issue)
 - LLM sometimes outputs English or raw event data instead of Finnish posts
 - Prompt templates need refinement for better content quality
