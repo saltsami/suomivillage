@@ -413,6 +413,22 @@ async def fetch_latest_sim_ts() -> datetime:
     return datetime.now(tz=timezone.utc)
 
 
+async def fetch_latest_tick_index() -> int:
+    """Fetch the highest tick index from existing routine events to resume from."""
+    assert db_pool is not None
+    async with db_pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT MAX(CAST(SUBSTRING(id FROM 'evt_routine_(\\d+)_') AS INTEGER)) AS max_tick
+            FROM events
+            WHERE id LIKE 'evt_routine_%'
+            """
+        )
+        if row and row["max_tick"] is not None:
+            return int(row["max_tick"])
+    return 0
+
+
 ROUTINE_EVENT_TEMPLATES = [
     {
         "type": "LOCATION_VISIT",
@@ -521,11 +537,14 @@ async def main() -> None:
         event_types = {i.type: i for i in get_event_types()}
         rng = random.Random(settings.sim_seed)
         sim_ts = await fetch_latest_sim_ts()
+        tick_index = await fetch_latest_tick_index() + 1
+        # Advance RNG state to match resumed tick position
+        for _ in range(tick_index // 10):
+            rng.choice(ROUTINE_EVENT_TEMPLATES)
+            rng.choice(get_places())
         print(
-            f"[engine] sim clock start sim_ts={sim_ts.isoformat()} seed={settings.sim_seed} tick_ms={settings.sim_tick_ms}"
+            f"[engine] sim clock start sim_ts={sim_ts.isoformat()} seed={settings.sim_seed} tick_ms={settings.sim_tick_ms} resume_tick={tick_index}"
         )
-
-        tick_index = 0
         while True:
             sim_ts = await tick_once(sim_ts, tick_index, rng, event_types)
             tick_index += 1
