@@ -1,5 +1,6 @@
 import asyncio
 import json
+from pathlib import Path
 from typing import Any, Dict
 
 import asyncpg
@@ -12,6 +13,17 @@ settings = Settings()
 redis_client: Redis | None = None
 db_pool: asyncpg.Pool | None = None
 http_client = httpx.AsyncClient(timeout=30.0)
+
+# Load catalog prompts
+# In Docker: /app/packages/shared/data/event_types.json
+CATALOG_PATH = Path("/app/packages/shared/data/event_types.json")
+if not CATALOG_PATH.exists():
+    # Fallback for local dev
+    CATALOG_PATH = Path(__file__).parent.parent.parent / "packages" / "shared" / "data" / "event_types.json"
+
+with open(CATALOG_PATH) as f:
+    catalog_data = json.load(f)
+    PROMPT_CONFIG = catalog_data.get("content_generation_prompts", {})
 
 
 async def init_services() -> None:
@@ -34,6 +46,66 @@ async def fetch_job() -> Dict[str, Any] | None:
     return json.loads(job_json)
 
 
+def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, Any] | None) -> str:
+    """Build channel-specific prompt using catalog templates."""
+    channel_key = f"{channel.lower()}_prompt"
+    prompt_config = PROMPT_CONFIG.get(channel_key, {})
+    system_msg = prompt_config.get("system", "")
+
+    # Build event description in natural Finnish
+    event_type = event.get("type", "UNKNOWN")
+    place_id = event.get("place_id", "tuntematon paikka")
+    actors = event.get("actors", [])
+    targets = event.get("targets", [])
+    payload = event.get("payload", {})
+
+    # Create natural language description
+    actor_names = ", ".join([a.replace("npc_", "").capitalize() for a in actors]) if actors else "joku"
+
+    event_description = f"Tapahtuma: {event_type}"
+    if place_id != "tuntematon paikka":
+        event_description += f" paikassa {place_id.replace('place_', '')}"
+    if actors:
+        event_description += f". Osallistujat: {actor_names}"
+    if targets:
+        target_names = ", ".join([t.replace("npc_", "").capitalize() for t in targets])
+        event_description += f". Kohteena: {target_names}"
+
+    # Add payload details if meaningful
+    if payload and isinstance(payload, dict):
+        for key, value in payload.items():
+            if key not in ["source", "tick"] and value:
+                event_description += f". {key}: {value}"
+
+    # Build user prompt with system context + event + profile
+    user_prompt = f"{system_msg}\n\n"
+    user_prompt += f"Tapahtuman tiedot:\n{event_description}\n\n"
+
+    if author_profile:
+        name = author_profile.get("name", "")
+        personality = author_profile.get("personality", "")
+        voice = author_profile.get("voice", "")
+        if name:
+            user_prompt += f"Hahmo: {name}\n"
+        if personality:
+            user_prompt += f"Luonne: {personality}\n"
+        if voice:
+            user_prompt += f"Tyyli: {voice}\n"
+        user_prompt += "\n"
+
+    # Add output instruction
+    if channel == "FEED":
+        user_prompt += "Kirjoita lyhyt somepostaus (max 280 merkkiä) tästä tapahtumasta hahmon näkökulmasta suomeksi. Ole luonnollinen ja inhimillinen."
+    elif channel == "CHAT":
+        user_prompt += "Kirjoita lyhyt chat-viesti (max 220 merkkiä) suomeksi. Ole reagoiva ja keskusteleva."
+    elif channel == "NEWS":
+        user_prompt += "Kirjoita lyhyt uutisotsikko ja tiivistelmä (max 480 merkkiä) neutraalisti suomeksi."
+    else:
+        user_prompt += f"Kirjoita lyhyt {channel}-julkaisu suomeksi."
+
+    return user_prompt
+
+
 async def call_gateway(job: Dict[str, Any]) -> Dict[str, Any]:
     prompt_context = job.get("prompt_context", {})
     event = prompt_context.get("event", {})
@@ -48,16 +120,10 @@ async def call_gateway(job: Dict[str, Any]) -> Dict[str, Any]:
                 if isinstance(author_profile, str):
                     author_profile = json.loads(author_profile)
 
+    # Use catalog-based prompt building
     prompt = summary
     if event:
-        prompt = (
-            f"Kirjoita {job['channel']}-julkaisu tapahtumasta.\n"
-            f"Tyyppi: {event.get('type')}\n"
-            f"Paikka: {event.get('place_id')}\n"
-            f"Näyttelijät: {event.get('actors')}\n"
-            f"Kohteet: {event.get('targets')}\n"
-            f"Payload: {json.dumps(event.get('payload', {}), ensure_ascii=False)}"
-        )
+        prompt = build_prompt(job["channel"], event, author_profile)
 
     payload = {
         "prompt": prompt,

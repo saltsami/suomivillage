@@ -22,11 +22,16 @@ app.add_middleware(
 )
 
 SYSTEM_JSON_INSTRUCTION = (
-    "Olet Koivulahti-kyläsimulaation sisällöntuottaja. Vastaa VAIN JSON-objektina "
-    "ilman selityksiä tai koodiblokkeja.\n"
-    "JSON-kentät: channel, author_id, source_event_id, tone, text, tags, safety_notes.\n"
-    "tone on yksi: friendly, neutral, defensive, snarky, concerned, formal, hyped.\n"
-    "tags on lista lyhyitä tageja, safety_notes voi olla null."
+    "Vastaa VAIN valid JSON-objektina ilman ylimääräistä tekstiä, selityksiä tai Markdown-koodia.\n\n"
+    "Vaaditut JSON-kentät:\n"
+    "- channel: kanavän nimi (FEED/CHAT/NEWS)\n"
+    "- author_id: kirjoittajan ID\n"
+    "- source_event_id: tapahtuman ID\n"
+    "- tone: sävy, yksi näistä: friendly, neutral, defensive, snarky, concerned, formal, hyped\n"
+    "- text: varsinainen tekstisisältö suomeksi (max 280 merkkiä FEED, 220 CHAT, 480 NEWS)\n"
+    "- tags: lista 1-5 lyhyttä asiasanaa suomeksi\n"
+    "- safety_notes: null tai huomio ongelmallisesta sisällöstä\n\n"
+    "Kirjoita text-kenttään VAIN itse postaus/viesti/uutinen - ei metatietoja tai selityksiä."
 )
 
 
@@ -81,48 +86,59 @@ async def call_llama_cpp(
     request: GenerateRequest, temperature: float, messages: list[dict[str, str]]
 ) -> Tuple[Dict[str, Any], str]:
     base = settings.llm_server_url.rstrip("/")
+
+    # Define JSON schema to constrain output format
+    json_schema = {
+        "type": "object",
+        "properties": {
+            "channel": {"type": "string"},
+            "author_id": {"type": "string"},
+            "source_event_id": {"type": "string"},
+            "tone": {
+                "type": "string",
+                "enum": ["friendly", "neutral", "defensive", "snarky", "concerned", "formal", "hyped"]
+            },
+            "text": {"type": "string", "maxLength": 400},
+            "tags": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
+            "safety_notes": {"type": ["string", "null"]}
+        },
+        "required": ["channel", "author_id", "source_event_id", "tone", "text", "tags"],
+        "additionalProperties": False
+    }
+
+    # Try chat completions with JSON schema first (Qwen2.5 supports this)
     payload: Dict[str, Any] = {
         "model": "local-model",
         "messages": messages,
         "temperature": temperature,
         "max_tokens": settings.llm_max_tokens,
         "stream": False,
+        "response_format": {
+            "type": "json_object",
+            "schema": json_schema
+        }
     }
+
     try:
         resp = await client.post(f"{base}/v1/chat/completions", json=payload)
         if resp.status_code == 400:
             err_text = resp.text or ""
-            if (
-                "Only user and assistant roles are supported" in err_text
-                or "Conversation roles must alternate" in err_text
-            ):
-                payload["messages"] = merge_system_into_user(messages)
+            # Fallback: try without schema if not supported
+            if "schema" in err_text.lower() or "not supported" in err_text.lower():
+                payload["response_format"] = {"type": "json_object"}
                 resp = await client.post(f"{base}/v1/chat/completions", json=payload)
-        if resp.status_code == 404:
-            raise httpx.HTTPStatusError("not found", request=resp.request, response=resp)
         resp.raise_for_status()
         return resp.json(), "chat"
-    except httpx.HTTPStatusError:
-        # Fallback to text completion endpoints.
+    except Exception:
+        # Final fallback: completion mode without schema
         full_prompt = merge_system_into_user(messages)[0]["content"]
         completion_payload = {
-            "model": "local-model",
             "prompt": full_prompt,
             "temperature": temperature,
-            "max_tokens": settings.llm_max_tokens,
+            "n_predict": settings.llm_max_tokens,
             "stream": False,
         }
-        resp = await client.post(f"{base}/v1/completions", json=completion_payload)
-        if resp.status_code == 404:
-            resp = await client.post(
-                f"{base}/completion",
-                json={
-                    "prompt": full_prompt,
-                    "temperature": temperature,
-                    "n_predict": settings.llm_max_tokens,
-                    "stream": False,
-                },
-            )
+        resp = await client.post(f"{base}/completion", json=completion_payload)
         resp.raise_for_status()
         return resp.json(), "completion"
 
