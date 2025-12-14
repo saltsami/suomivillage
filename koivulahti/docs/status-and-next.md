@@ -148,6 +148,35 @@ curl http://localhost:8082/events?limit=5
     - Live feed/chat/news streams
     - Relationship graph visualization
 
+## Session Summary (2025-12-14 Night) - DB Cleanup
+
+**Tietokannan siivous aloitettu**
+
+Ongelmat tunnistettu posts-taulussa (251 riviä):
+- 13 stub-postausta (id 1-13): `[stub] channel=CHAT event=...`
+- 85 rikkinäistä kanavaa: `"Olet Koivulahti-kyläsimulaation"`, `place_paja`, `place_kauppa`
+- ~50 englanninkielistä: `*sips tea*`, `Hi there!`
+- 30 author_id variaatiota: `npc_jari` vs `Jari` vs `jari`
+
+**Tehty:**
+- ✅ Poistettu vanhat postaukset id < 220
+- ✅ Poistettu rikkinäiset kanavat (NOT IN FEED/CHAT/NEWS)
+
+**Kesken - jatka seuraavalla kerralla:**
+```sql
+-- Korjaa author_id variaatiot yhtenäisiksi
+UPDATE posts SET author_id = 'Aila' WHERE author_id IN ('aila', 'npc_aila');
+UPDATE posts SET author_id = 'Eero' WHERE author_id IN ('eero', 'npc_eero');
+UPDATE posts SET author_id = 'Osku' WHERE author_id IN ('osku', 'npc_osku');
+UPDATE posts SET author_id = 'Petri' WHERE author_id IN ('npc_petri', 'NPC_Petri');
+UPDATE posts SET author_id = 'Timo' WHERE author_id IN ('npc_timo', 'timo_id');
+DELETE FROM posts WHERE author_id = 'your_id_here';
+```
+
+Hyvälaatuiset postaukset (id >= 220) ovat Qwen2.5:n tuottamia ja suomeksi.
+
+---
+
 ## Session Summary (2025-12-14 Evening)
 
 **Major Finnish Language Quality Upgrade - Qwen2.5 + Catalog Prompts**
