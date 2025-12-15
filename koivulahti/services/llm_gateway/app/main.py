@@ -10,8 +10,12 @@ from pydantic import BaseModel, Field
 from packages.shared.settings import Settings
 
 settings = Settings()
-client = httpx.AsyncClient(timeout=30.0)
+client = httpx.AsyncClient(timeout=60.0)
 app = FastAPI(title="Koivulahti LLM Gateway", version="0.1.0")
+
+# Channel-specific character limits
+MAX_CHARS_BY_CHANNEL = {"FEED": 280, "CHAT": 220, "NEWS": 480}
+TONES = ["friendly", "neutral", "defensive", "snarky", "concerned", "formal", "hyped"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,16 +26,22 @@ app.add_middleware(
 )
 
 SYSTEM_JSON_INSTRUCTION = (
-    "Vastaa VAIN valid JSON-objektina ilman ylimääräistä tekstiä, selityksiä tai Markdown-koodia.\n\n"
-    "Vaaditut JSON-kentät:\n"
-    "- channel: kanavän nimi (FEED/CHAT/NEWS)\n"
+    "Vastaa VAIN valid JSON-objektina.\n\n"
+    "TIUKAT SÄÄNNÖT:\n"
+    "- Max 2 lausetta text-kentässä\n"
+    "- Ei kappaleita tai rivinvaihtoja textissä\n"
+    "- Ei johdantoja ('Tässä on...', 'Kirjoitan...')\n"
+    "- FEED/CHAT: puhekieli, rento tyyli\n"
+    "- NEWS: neutraali uutiskieli\n"
+    "- Vain itse postaus text-kenttään, ei metatietoja\n\n"
+    "JSON-kentät:\n"
+    "- channel: kanava (FEED/CHAT/NEWS)\n"
     "- author_id: kirjoittajan ID\n"
     "- source_event_id: tapahtuman ID\n"
-    "- tone: sävy, yksi näistä: friendly, neutral, defensive, snarky, concerned, formal, hyped\n"
-    "- text: varsinainen tekstisisältö suomeksi (max 280 merkkiä FEED, 220 CHAT, 480 NEWS)\n"
-    "- tags: lista 1-5 lyhyttä asiasanaa suomeksi\n"
-    "- safety_notes: null tai huomio ongelmallisesta sisällöstä\n\n"
-    "Kirjoita text-kenttään VAIN itse postaus/viesti/uutinen - ei metatietoja tai selityksiä."
+    "- tone: friendly/neutral/defensive/snarky/concerned/formal/hyped\n"
+    "- text: postaus suomeksi (FEED max 280, CHAT max 220, NEWS max 480 merkkiä)\n"
+    "- tags: 1-5 lyhyttä asiasanaa suomeksi\n"
+    "- safety_notes: null tai huomio"
 )
 
 
@@ -52,6 +62,30 @@ class GenerateResponse(BaseModel):
     text: str
     tags: list[str] = Field(default_factory=list)
     safety_notes: Optional[str] = None
+
+
+def build_json_schema(req: GenerateRequest) -> Dict[str, Any]:
+    """Build JSON schema with locked values and channel-specific limits."""
+    max_len = MAX_CHARS_BY_CHANNEL.get(req.channel, 280)
+    return {
+        "type": "object",
+        "properties": {
+            "channel": {"type": "string", "const": req.channel},
+            "author_id": {"type": "string", "const": req.author_id},
+            "source_event_id": {"type": "string", "const": req.source_event_id},
+            "tone": {"type": "string", "enum": TONES},
+            "text": {"type": "string", "minLength": 1, "maxLength": max_len},
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": 5,
+            },
+            "safety_notes": {"type": ["string", "null"]},
+        },
+        "required": ["channel", "author_id", "source_event_id", "tone", "text", "tags"],
+        "additionalProperties": False,
+    }
 
 
 @app.on_event("shutdown")
@@ -85,62 +119,71 @@ def merge_system_into_user(messages: list[dict[str, str]]) -> list[dict[str, str
 async def call_llama_cpp(
     request: GenerateRequest, temperature: float, messages: list[dict[str, str]]
 ) -> Tuple[Dict[str, Any], str]:
+    """Call llama.cpp with 3-level fallback for JSON schema support."""
     base = settings.llm_server_url.rstrip("/")
+    schema = build_json_schema(request)
 
-    # Define JSON schema to constrain output format
-    json_schema = {
-        "type": "object",
-        "properties": {
-            "channel": {"type": "string"},
-            "author_id": {"type": "string"},
-            "source_event_id": {"type": "string"},
-            "tone": {
-                "type": "string",
-                "enum": ["friendly", "neutral", "defensive", "snarky", "concerned", "formal", "hyped"]
-            },
-            "text": {"type": "string", "maxLength": 400},
-            "tags": {"type": "array", "items": {"type": "string"}, "maxItems": 5},
-            "safety_notes": {"type": ["string", "null"]}
-        },
-        "required": ["channel", "author_id", "source_event_id", "tone", "text", "tags"],
-        "additionalProperties": False
-    }
-
-    # Try chat completions with JSON schema first (Qwen2.5 supports this)
+    # Base payload for chat completions
     payload: Dict[str, Any] = {
         "model": "local-model",
         "messages": messages,
         "temperature": temperature,
         "max_tokens": settings.llm_max_tokens,
         "stream": False,
-        "response_format": {
-            "type": "json_object",
-            "schema": json_schema
-        }
     }
 
+    # Level 1: Try json_schema mode (strictest)
+    payload["response_format"] = {"type": "json_schema", "schema": schema}
     try:
         resp = await client.post(f"{base}/v1/chat/completions", json=payload)
+        if resp.status_code == 200:
+            return resp.json(), "chat_json_schema"
+
+        # Level 2: Try json_object + schema (alternative format)
         if resp.status_code == 400:
-            err_text = resp.text or ""
-            # Fallback: try without schema if not supported
-            if "schema" in err_text.lower() or "not supported" in err_text.lower():
+            payload["response_format"] = {"type": "json_object", "schema": schema}
+            resp = await client.post(f"{base}/v1/chat/completions", json=payload)
+            if resp.status_code == 200:
+                return resp.json(), "chat_json_object_schema"
+
+            # Level 3: Try plain json_object (no schema constraint)
+            if resp.status_code == 400:
                 payload["response_format"] = {"type": "json_object"}
                 resp = await client.post(f"{base}/v1/chat/completions", json=payload)
+                if resp.status_code == 200:
+                    return resp.json(), "chat_json_object"
+
         resp.raise_for_status()
         return resp.json(), "chat"
-    except Exception:
-        # Final fallback: completion mode without schema
-        full_prompt = merge_system_into_user(messages)[0]["content"]
-        completion_payload = {
-            "prompt": full_prompt,
-            "temperature": temperature,
-            "n_predict": settings.llm_max_tokens,
-            "stream": False,
-        }
-        resp = await client.post(f"{base}/completion", json=completion_payload)
+    except Exception as e:
+        print(f"[llm-gateway] Chat completions failed: {e}")
+
+    # Fallback: OpenAI-compatible /v1/completions endpoint
+    full_prompt = merge_system_into_user(messages)[0]["content"]
+    completion_payload = {
+        "model": "local-model",
+        "prompt": full_prompt,
+        "temperature": temperature,
+        "max_tokens": settings.llm_max_tokens,
+        "stream": False,
+    }
+    try:
+        resp = await client.post(f"{base}/v1/completions", json=completion_payload)
         resp.raise_for_status()
-        return resp.json(), "completion"
+        return resp.json(), "v1_completions"
+    except Exception as e:
+        print(f"[llm-gateway] v1/completions failed: {e}")
+
+    # Final fallback: legacy llama.cpp /completion endpoint
+    legacy_payload = {
+        "prompt": full_prompt,
+        "temperature": temperature,
+        "n_predict": settings.llm_max_tokens,
+        "stream": False,
+    }
+    resp = await client.post(f"{base}/completion", json=legacy_payload)
+    resp.raise_for_status()
+    return resp.json(), "completion"
 
 
 def extract_text(llama_data: Dict[str, Any]) -> str:
@@ -228,6 +271,32 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
 
     raw_text = extract_text(llama_data)
     raw_json = extract_json(raw_text)
+
+    # Repair loop: if JSON parsing failed, try to fix it with a second LLM call
+    if not raw_json and raw_text:
+        print(f"[llm-gateway] JSON parse failed, attempting repair (mode={mode})")
+        repair_prompt = (
+            "Korjaa seuraava mallitulos VALIDIKSI JSON-OBJEKTIKSI. "
+            "Älä lisää mitään muuta, vain korjattu JSON.\n\n"
+            f"TARGET: channel={request.channel}, author_id={request.author_id}, "
+            f"source_event_id={request.source_event_id}\n\n"
+            f"BROKEN OUTPUT:\n{raw_text[:1000]}"
+        )
+        repair_messages = [
+            {"role": "system", "content": SYSTEM_JSON_INSTRUCTION},
+            {"role": "user", "content": repair_prompt},
+        ]
+        try:
+            llama_data2, mode2 = await call_llama_cpp(
+                request, min(0.3, temperature), repair_messages
+            )
+            raw_text2 = extract_text(llama_data2)
+            raw_json = extract_json(raw_text2)
+            if raw_json:
+                print(f"[llm-gateway] Repair successful (mode={mode2})")
+                return normalize_response(raw_json, request, raw_text2)
+        except Exception as e:
+            print(f"[llm-gateway] Repair attempt failed: {e}")
 
     if not raw_json:
         return GenerateResponse(
