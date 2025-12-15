@@ -148,32 +148,52 @@ curl http://localhost:8082/events?limit=5
     - Live feed/chat/news streams
     - Relationship graph visualization
 
-## Session Summary (2025-12-14 Night) - DB Cleanup
+## Session Summary (2025-12-14 Night) - DB Cleanup COMPLETED ✅
 
-**Tietokannan siivous aloitettu**
+**Tietokannan siivous suoritettu onnistuneesti**
 
-Ongelmat tunnistettu posts-taulussa (251 riviä):
-- 13 stub-postausta (id 1-13): `[stub] channel=CHAT event=...`
-- 85 rikkinäistä kanavaa: `"Olet Koivulahti-kyläsimulaation"`, `place_paja`, `place_kauppa`
-- ~50 englanninkielistä: `*sips tea*`, `Hi there!`
-- 30 author_id variaatiota: `npc_jari` vs `Jari` vs `jari`
+Alkutilanne:
+- posts: ~250 riviä (sisälsi stub-postauksia, rikkinäisiä kanavia, englantia, author_id variaatioita)
+- events: 2346 tapahtumaa (paljon vanhoja routine-eventtejä)
+- memories: 1020 muistoa (sidottu eventteihin)
 
-**Tehty:**
-- ✅ Poistettu vanhat postaukset id < 220
-- ✅ Poistettu rikkinäiset kanavat (NOT IN FEED/CHAT/NEWS)
+**Suoritetut toimenpiteet:**
 
-**Kesken - jatka seuraavalla kerralla:**
-```sql
--- Korjaa author_id variaatiot yhtenäisiksi
-UPDATE posts SET author_id = 'Aila' WHERE author_id IN ('aila', 'npc_aila');
-UPDATE posts SET author_id = 'Eero' WHERE author_id IN ('eero', 'npc_eero');
-UPDATE posts SET author_id = 'Osku' WHERE author_id IN ('osku', 'npc_osku');
-UPDATE posts SET author_id = 'Petri' WHERE author_id IN ('npc_petri', 'NPC_Petri');
-UPDATE posts SET author_id = 'Timo' WHERE author_id IN ('npc_timo', 'timo_id');
-DELETE FROM posts WHERE author_id = 'your_id_here';
+1. ✅ **Posts-taulun siivous:**
+   - Poistettu vanhat postaukset (id < 220)
+   - Poistettu rikkinäiset kanavat (NOT IN FEED/CHAT/NEWS)
+   - Korjattu author_id variaatiot yhtenäisiksi (capitalize first letter):
+     - `aila`, `miia`, `eero`, `osku` → `Aila`, `Miia`, `Eero`, `Osku`
+     - `NPC_Petri` → `Petri`
+     - `timo_id` → `Timo`
+
+2. ✅ **Events-taulun siivous:**
+   - Poistettu 1326 vanhaa routine-eventtiä
+   - Pidetty viimeisimmät 1000 routine-eventtiä + kaikki Day 1 seed eventit
+
+3. ✅ **Memories-taulun siivous:**
+   - Automaattisesti siivottu CASCADE DELETE:llä (579 muistoa jäljellä)
+   - Ei orphan-muistoja
+
+**Lopputilanne:**
+```
+Table          | Count | Size    | Status
+---------------|-------|---------|--------
+posts          | 55    | 160 kB  | ✅ Clean, Finnish, valid channels
+events         | 1020  | 776 kB  | ✅ Recent events + Day 1 seeds
+memories       | 579   | 272 kB  | ✅ Auto-cleaned via CASCADE
+relationships  | 14    | 64 kB   | ✅ OK
+goals          | 18    | 48 kB   | ✅ OK
+---------------|-------|---------|--------
+TOTAL          |       | ~1.3 MB | ✅ Optimized
 ```
 
-Hyvälaatuiset postaukset (id >= 220) ovat Qwen2.5:n tuottamia ja suomeksi.
+**Tulokset:**
+- ✅ Kaikki postaukset laadukasta suomea (Qwen2.5-generoidut)
+- ✅ Author_id:t yhtenäisiä (12 uniikkia NPC:tä)
+- ✅ Channels validit (FEED, CHAT)
+- ✅ Tietokanta optimoitu (~56% pienempi)
+- ✅ Ei dataintegriteetti-ongelmia
 
 ---
 
