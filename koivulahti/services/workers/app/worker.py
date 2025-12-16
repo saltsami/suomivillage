@@ -1,5 +1,7 @@
 import asyncio
+import hashlib
 import json
+import random
 from pathlib import Path
 from typing import Any, Dict
 
@@ -8,6 +10,103 @@ import httpx
 from redis.asyncio import Redis
 
 from packages.shared.settings import Settings
+
+
+# --- Helper functions for deterministic variation and style extraction ---
+
+def rng_for(event_id: str, author_id: str) -> random.Random:
+    """Create deterministic RNG based on event+author for consistent variation."""
+    h = hashlib.sha256(f"{event_id}:{author_id}".encode("utf-8")).hexdigest()
+    seed = int(h[:8], 16)
+    return random.Random(seed)
+
+
+def style_from_profile(profile: dict, channel: str, event: dict) -> str:
+    """Turn rich profile dict into short natural language style instructions."""
+    if not profile:
+        profile = {}
+
+    name = profile.get("name", "Kyläläinen")
+    bio = profile.get("bio", "")
+
+    voice = profile.get("voice", {}) or {}
+    if isinstance(voice, str):
+        # Fallback if voice is string
+        voice = {}
+
+    # Extract voice parameters with defaults
+    slang = voice.get("slang_level", 0.3)
+    sarcasm = voice.get("sarcasm", 0.2)
+    politeness = voice.get("politeness", 0.6)
+    verbosity = voice.get("verbosity", 0.5)
+    sigs = voice.get("signature_phrases", []) or []
+
+    # Map numeric values to Finnish descriptions
+    def lvl(x, low, high, a, b, c):
+        return a if x < low else (b if x < high else c)
+
+    slang_w = lvl(slang, 0.25, 0.6, "yleiskieltä", "rento puhekieli", "slangia")
+    sarcasm_w = lvl(sarcasm, 0.2, 0.5, "", "pientä ironiaa", "sarkastinen")
+    polite_w = lvl(politeness, 0.4, 0.75, "suorapuheinen", "asiallinen", "kohtelias")
+    terse_w = lvl(verbosity, 0.35, 0.65, "tiivis", "napakka", "hieman laveampi")
+
+    # Choose signature phrase rarely & deterministically
+    r = rng_for(event.get("id", "evt"), profile.get("id", "npc"))
+    sig = r.choice(sigs) if (sigs and channel in ("FEED", "CHAT") and r.random() < 0.3) else None
+
+    if channel == "NEWS":
+        return (
+            "Kirjoita neutraali uutistyyli, 2–3 lausetta. "
+            "Ei minä-muotoa. Ei mielipiteitä. Vain faktat."
+        )
+
+    # Build style string
+    style_parts = [s for s in [slang_w, polite_w, sarcasm_w, terse_w] if s]
+    style_str = ", ".join(style_parts)
+
+    base = f"Olet {name}."
+    if bio:
+        base += f" {bio[:100]}"
+    base += f" Tyyli: {style_str}. Max 2 lausetta, minä-muoto, ei meta-puhetta."
+
+    if sig:
+        base += f' Voit käyttää fraasia: "{sig}".'
+
+    return base
+
+
+def event_facts_fi(event: dict) -> str:
+    """Extract concrete facts from event payload for better specificity."""
+    t = event.get("type", "UNKNOWN")
+    place = (event.get("place_id") or "place_kylä").replace("place_", "")
+    payload = event.get("payload") or {}
+    actors = event.get("actors", [])
+    targets = event.get("targets", [])
+
+    # Extract payload details
+    topic = payload.get("topic")
+    item = payload.get("item")
+    mood = payload.get("mood")
+    activity = payload.get("activity")
+    satisfaction = payload.get("satisfaction")
+
+    parts = [f"paikka={place}"]
+
+    if t == "SMALL_TALK" and targets:
+        target_name = targets[0].replace("npc_", "").capitalize()
+        parts.append(f"juttelukumppani={target_name}")
+    if topic:
+        parts.append(f"aihe={topic}")
+    if item:
+        parts.append(f"asia={item}")
+    if mood:
+        parts.append(f"fiilis={mood}")
+    if activity:
+        parts.append(f"tekeminen={activity}")
+    if satisfaction:
+        parts.append(f"tunnelma={satisfaction}")
+
+    return ", ".join(parts)
 
 settings = Settings()
 redis_client: Redis | None = None
@@ -46,11 +145,16 @@ async def fetch_job() -> Dict[str, Any] | None:
     return json.loads(job_json)
 
 
-def make_draft(channel: str, event: Dict[str, Any], author_name: str) -> str:
-    """Create a deterministic draft based on event - LLM will rewrite in character voice."""
+def make_draft(channel: str, event: Dict[str, Any], author_id: str) -> str:
+    """Create a deterministic draft with variation based on event."""
     event_type = event.get("type", "UNKNOWN")
+    event_id = event.get("id", "evt")
     place_id = event.get("place_id", "")
     place = place_id.replace("place_", "") if place_id else "kylällä"
+    payload = event.get("payload") or {}
+
+    # Deterministic RNG for this event+author combo
+    r = rng_for(event_id, author_id)
 
     # Map place_id to Finnish location names
     place_names = {
@@ -60,94 +164,134 @@ def make_draft(channel: str, event: Dict[str, Any], author_name: str) -> str:
         "paja": "pajalla",
         "ranta": "rannalla",
         "kylatalo": "kylätalolla",
+        "tori": "torilla",
     }
     place_fi = place_names.get(place, place + "ssa")
 
-    # Create simple draft based on event type
+    # Extract payload details for richer drafts
+    topic = payload.get("topic", "")
+    item = payload.get("item", "")
+    mood = payload.get("mood", "")
+    activity = payload.get("activity", "")
+
+    # --- LOCATION_VISIT ---
     if event_type == "LOCATION_VISIT":
         if channel == "FEED":
-            return f"Kävin {place_fi}."
-        else:  # CHAT
-            return f"Oon nyt {place_fi}."
+            opts = [
+                f"Kävin {place_fi}. {activity or 'Teki hyvää.'}",
+                f"Piipahdin {place_fi}. {mood or 'Ihan ok.'}",
+                f"Poikkesin {place_fi}. {activity or 'Pieni tauko.'}",
+            ]
+        else:
+            opts = [
+                f"Oon {place_fi}. {activity or 'Chillaan.'}",
+                f"Tulin {place_fi}. {mood or 'Mitäs täällä?'}",
+                f"{place_fi.capitalize()} nyt. {activity or ''}",
+            ]
+        return r.choice(opts).strip()
 
+    # --- SMALL_TALK ---
     elif event_type == "SMALL_TALK":
         targets = event.get("targets", [])
+        topic_str = f" {topic}sta" if topic else ""
+        mood_str = mood or ""
+
         if targets:
             target = targets[0].replace("npc_", "").capitalize()
             if channel == "FEED":
-                return f"Juttelin {target}n kanssa {place_fi}."
+                opts = [
+                    f"Juttelin {target}n kanssa{topic_str} {place_fi}. {mood_str}",
+                    f"Törmäsin {target}iin {place_fi}. Vaihdettiin kuulumisia.{' ' + mood_str if mood_str else ''}",
+                    f"Nähtiin {target}n kanssa {place_fi}.{' Puhuttiin ' + topic + '.' if topic else ''} {mood_str}",
+                ]
             else:
-                return f"Näin {target}n {place_fi}. Juteltiin hetki."
+                opts = [
+                    f"Näin just {target}n {place_fi}. {mood_str or 'Mitäs sulle?'}",
+                    f"Juttelin {target}n kaa. {mood_str}",
+                    f"{target} oli {place_fi}. Vaihdettiin pari sanaa.",
+                ]
         else:
             if channel == "FEED":
-                return f"Kävin {place_fi}. Oli mukavaa."
+                opts = [
+                    f"Kävin {place_fi}. {topic_str.strip() + ' oli puheenaiheena.' if topic else 'Mukavaa porukkaa.'}",
+                    f"Istuskelin {place_fi}. {mood_str or 'Rauhallista.'}",
+                    f"Viihdyin {place_fi}. {mood_str}",
+                ]
             else:
-                return f"Oon {place_fi}. Mitä sulle kuuluu?"
+                opts = [
+                    f"Oon {place_fi}. {mood_str or 'Mitä kuuluu?'}",
+                    f"Täällä {place_fi}. {topic_str.strip() + ' puhutaan.' if topic else ''}",
+                    f"Istun {place_fi}. {mood_str}",
+                ]
+        return r.choice(opts).strip()
 
+    # --- CUSTOMER_INTERACTION ---
     elif event_type == "CUSTOMER_INTERACTION":
-        if channel == "FEED":
-            return f"Asiakkaita {place_fi} tänään."
-        else:
-            return f"Töissä {place_fi}. Kiireistä."
+        item_str = item or "asiakkaita"
+        mood_str = mood or ""
 
+        if channel == "FEED":
+            opts = [
+                f"Töissä {place_fi}. {item_str.capitalize()} tänään. {mood_str}",
+                f"Palvelin {item_str} {place_fi}. {mood_str or 'Normi päivä.'}",
+                f"Asiakkaita riitti {place_fi}. {mood_str}",
+            ]
+        else:
+            opts = [
+                f"Duunissa {place_fi}. {item_str.capitalize()}. {mood_str}",
+                f"Hommia {place_fi}. {mood_str or 'Menee hyvin.'}",
+                f"Täällä {place_fi} töissä. {item_str.capitalize() + '.' if item else ''}",
+            ]
+        return r.choice(opts).strip()
+
+    # --- RUMOR_SPREAD ---
     elif event_type == "RUMOR_SPREAD":
-        return f"Kuulin juttuja {place_fi}. En tiedä mitä uskoa."
+        topic_str = topic or "juttuja"
+        opts = [
+            f"Kuulin {topic_str} {place_fi}. En tiedä mitä uskoa.",
+            f"Kylällä puhutaan... {topic_str}. Mielenkiintoista.",
+            f"Joku kertoi {topic_str}. Pitääkö paikkansa?",
+        ]
+        return r.choice(opts).strip()
 
+    # --- Fallback ---
     else:
-        # Generic fallback
         if channel == "FEED":
-            return f"Tapahtui jotain {place_fi}."
+            return f"Kävin {place_fi}. {mood_str if mood else 'Ihan tavallinen päivä.'}"
         else:
-            return f"Oon {place_fi} nyt."
+            return f"Oon {place_fi}. {mood_str if mood else 'Mitäs?'}"
 
 
 def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, Any] | None) -> str:
-    """Build draft-based prompt - LLM rewrites draft in character voice."""
+    """Build draft-based prompt using style helpers - LLM rewrites draft in character voice."""
+    author_id = (author_profile or {}).get("id", "npc")
 
-    # Get author info
-    author_name = ""
-    personality = ""
-    voice = ""
-    if author_profile:
-        author_name = author_profile.get("name", "")
-        personality = author_profile.get("personality", "")
-        voice = author_profile.get("voice", "")
+    # Get style instructions from profile (handles dict voice properly)
+    style = style_from_profile(author_profile, channel, event)
+
+    # Get facts from event payload
+    facts = event_facts_fi(event)
 
     # Create deterministic draft
-    draft = make_draft(channel, event, author_name)
+    draft = make_draft(channel, event, author_id)
 
-    # Build the rewrite prompt
     if channel == "NEWS":
-        # NEWS is different - neutral style, not first person
-        event_type = event.get("type", "UNKNOWN")
-        place = event.get("place_id", "").replace("place_", "")
-        actors = event.get("actors", [])
-        actor_str = ", ".join([a.replace("npc_", "").capitalize() for a in actors[:2]]) if actors else "Kylän asukas"
-
         return (
-            f"Kirjoita lyhyt uutisjuttu (max 2 lausetta, neutraali tyyli).\n\n"
-            f"FAKTAT: {event_type} tapahtui paikassa {place}. Osallisena {actor_str}.\n\n"
-            f"Kirjoita uutinen suomeksi:"
+            f"{style}\n\n"
+            f"FAKTAT: {facts}\n\n"
+            f"Kirjoita lyhyt uutinen. Älä lisää mitään mitä faktoissa ei ole.\n"
+            f"Vastaa vain uutistekstillä."
         )
 
     # FEED/CHAT: rewrite draft in character voice
-    prompt = f"Kirjoita tämä uudelleen omalla tyylilläsi. 1. persoona, max 2 lausetta.\n\n"
-    prompt += f"DRAFT: {draft}\n\n"
-
-    if author_name:
-        prompt += f"Olet {author_name}."
-        if personality:
-            prompt += f" Luonteesi: {personality}."
-        if voice:
-            prompt += f" Tyylisi: {voice}."
-        prompt += "\n\n"
-
-    if channel == "FEED":
-        prompt += "Kirjoita somepostaus (rento, arkinen suomi):"
-    else:
-        prompt += "Kirjoita chat-viesti (lyhyt, keskusteleva):"
-
-    return prompt
+    return (
+        f"{style}\n\n"
+        f"FAKTAT: {facts}\n"
+        f"DRAFT (pidä faktat samana): {draft}\n\n"
+        f"Tehtävä: muotoile draft uudelleen hahmon omalla äänellä. "
+        f"Älä lisää uusia faktoja. Max 2 lausetta. Ei rivinvaihtoja.\n"
+        f"Vastaa vain tekstillä."
+    )
 
 
 async def call_gateway(job: Dict[str, Any]) -> Dict[str, Any]:
@@ -202,9 +346,22 @@ async def persist_post(data: Dict[str, Any]) -> None:
 
 async def process_once() -> None:
     job = await fetch_job()
+
+    # Debug logging for author_id tracking
+    job_author = job.get("author_id", "MISSING")
+    job_channel = job.get("channel", "UNKNOWN")
+    job_event = job.get("source_event_id", "UNKNOWN")
+    print(f"[worker] processing: author={job_author}, channel={job_channel}, event={job_event}")
+
     generated = await call_gateway(job)
+
+    # Verify author_id consistency
+    gen_author = generated.get("author_id", "MISSING")
+    if job_author != gen_author:
+        print(f"[worker] WARNING: author_id mismatch! job={job_author} vs generated={gen_author}")
+
     await persist_post(generated)
-    print(f"[worker] stored post for event {generated['source_event_id']}")
+    print(f"[worker] stored: author={gen_author}, event={generated['source_event_id']}")
 
 
 async def main() -> None:

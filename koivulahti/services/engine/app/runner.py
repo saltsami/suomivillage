@@ -450,6 +450,67 @@ ROUTINE_EVENT_TEMPLATES = [
     },
 ]
 
+# Rich payload content for routine events
+PAYLOAD_OPTIONS = {
+    "LOCATION_VISIT": {
+        "activities": [
+            "rentoutumassa", "tapaamassa tuttuja", "vain käymässä",
+            "nauttimassa rauhasta", "hakemassa inspiraatiota", "tauolla",
+        ],
+        "moods": [
+            "Teki hyvää.", "Rauhoittavaa.", "Ihan ok.", "Pieni irtiotto.",
+            "Hyvä fiilis.", "Tarvitsin tätä.", "Virkistävää.",
+        ],
+    },
+    "SMALL_TALK": {
+        "topics": [
+            "sää", "talkoot", "kyläjuorut", "työ", "perhe", "kesäsuunnitelmat",
+            "naapurit", "kaupan tarjoukset", "kylän tapahtumat", "politiikka",
+        ],
+        "moods": [
+            "Mukava hetki.", "Kuulin uutta.", "Vaihdettiin kuulumisia.",
+            "Oli hauska jutella.", "Mielenkiintoista.", "Ihan perus.",
+        ],
+    },
+    "CUSTOMER_INTERACTION": {
+        "items": [
+            "kahvia", "leipää", "maitoa", "sanomalehden", "postia",
+            "perunoita", "kalaa", "juustoa", "makeisia", "tarvikkeita",
+        ],
+        "moods": [
+            "Kiireinen päivä.", "Rauhallista tänään.", "Asiakkaita riitti.",
+            "Normi päivä.", "Hyvin sujui.", "Paljon kyselijöitä.",
+        ],
+    },
+}
+
+
+def build_rich_payload(event_type: str, rng: random.Random, npcs: list) -> Dict[str, Any]:
+    """Build rich payload with content for the event type."""
+    payload: Dict[str, Any] = {"source": "routine_injector"}
+
+    options = PAYLOAD_OPTIONS.get(event_type, {})
+
+    if event_type == "LOCATION_VISIT":
+        if "activities" in options:
+            payload["activity"] = rng.choice(options["activities"])
+        if "moods" in options:
+            payload["mood"] = rng.choice(options["moods"])
+
+    elif event_type == "SMALL_TALK":
+        if "topics" in options:
+            payload["topic"] = rng.choice(options["topics"])
+        if "moods" in options:
+            payload["mood"] = rng.choice(options["moods"])
+
+    elif event_type == "CUSTOMER_INTERACTION":
+        if "items" in options:
+            payload["item"] = rng.choice(options["items"])
+        if "moods" in options:
+            payload["mood"] = rng.choice(options["moods"])
+
+    return payload
+
 
 async def generate_routine_event(
     tick_index: int,
@@ -472,6 +533,7 @@ async def generate_routine_event(
 
     # Select routine template using RNG
     template = rng.choice(ROUTINE_EVENT_TEMPLATES)
+    event_type = template["type"]
 
     # Find a place matching the template's place_types
     matching_places = [
@@ -486,19 +548,27 @@ async def generate_routine_event(
     # Generate event ID
     event_id = f"evt_routine_{tick_index}_{npc.id}"
 
+    # Build rich payload with content
+    payload = build_rich_payload(event_type, rng, npcs)
+    payload["tick"] = tick_index
+
+    # For SMALL_TALK, sometimes add a target NPC
+    targets = []
+    if event_type == "SMALL_TALK" and rng.random() < 0.4:
+        other_npcs = [n for n in npcs if n.id != npc.id]
+        if other_npcs:
+            targets = [rng.choice(other_npcs).id]
+
     return {
         "id": event_id,
-        "type": template["type"],
+        "type": event_type,
         "place_id": place.id,
         "actors": [npc.id],
-        "targets": [],
+        "targets": targets,
         "publicness": template["publicness"],
         "severity": template["severity"],
         "ts_local": sim_ts.isoformat(),
-        "payload": {
-            "source": "routine_injector",
-            "tick": tick_index,
-        },
+        "payload": payload,
     }
 
 
