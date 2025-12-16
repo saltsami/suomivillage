@@ -160,10 +160,11 @@ curl http://localhost:8082/events?limit=5
 **LLM Gateway parannukset:**
 - ✅ Dynaaminen JSON-schema per request (`build_json_schema()`)
 - ✅ Kanavakohtaiset merkkirajoitukset: FEED 280, CHAT 220, NEWS 480
-- ✅ `const` lukitsee channel/author_id/source_event_id schemassa
+- ✅ `const` schemassa (mutta llama.cpp ei tue sitä luotettavasti)
 - ✅ 3-tasoinen fallback: json_schema → json_object+schema → json_object → v1/completions → /completion
 - ✅ JSON repair loop epävalidille outputille (yrittää korjata LLM:llä)
 - ✅ Tiukempi system-ohje (max 2 lausetta, ei johdantoja)
+- ✅ `normalize_response()` pakottaa request-arvot (channel, author_id, source_event_id)
 
 **Pytest-testipaketti:**
 - ✅ `tests/conftest.py` - fixtures (client, gateway_url, prompt_cases)
@@ -173,19 +174,28 @@ curl http://localhost:8082/events?limit=5
 - ✅ `scripts/smoke_gateway.py` - standalone smoke script
 - ✅ `requirements-dev.txt` - pytest + httpx
 
+**Testitulokset (ennen rebuild):**
+- 25 passed, 4 xpassed, 3 failed
+- Failed: `test_const_locks_respected` - **gateway container ajaa vanhaa koodia!**
+
+**🔥 SEURAAVA SESSIO - aloita tästä:**
+```bash
+# 1. Rebuild gateway container uudella koodilla
+cd infra && docker-compose build llm-gateway
+docker-compose up -d llm-gateway
+
+# 2. Aja testit uudelleen
+LLM_GATEWAY_URL=http://localhost:8081 pytest tests/ -v
+
+# 3. Jos kaikki OK, merge mainiin
+git checkout main && git merge feature/llm-gateway-schema-improvements
+```
+
 **Jatkotyöt (pending):**
 - 🔲 `test_gateway_fallbacks.py` - vaatii debug-headerin `x-force-fallback`
 - 🔲 `test_gateway_repair.py` - vaatii debug-headerin `x-break-json`
 - 🔲 Gateway: lisää debug-headerit (vain ENV=dev)
 - 🔲 Response caching (Redis)
-
-**Testien ajo:**
-```bash
-pip install -r requirements-dev.txt
-LLM_GATEWAY_URL=http://localhost:8081 pytest tests/ -v
-# tai standalone:
-python scripts/smoke_gateway.py
-```
 
 ---
 
