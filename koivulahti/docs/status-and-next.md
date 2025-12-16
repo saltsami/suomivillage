@@ -1,6 +1,6 @@
 # Current Status & Next Steps (Live)
 
-Updated: 2025-12-14
+Updated: 2025-12-17
 
 ## What's implemented now
 
@@ -154,6 +154,74 @@ curl http://localhost:8082/events?limit=5
     - NPC profiles & relationships
     - Live feed/chat/news streams
     - Relationship graph visualization
+
+## Session Summary (2025-12-17) - Ambient Event Generator
+
+**Uusi järjestelmä:** Ulkoiset ärsykkeet (sää, uutiset) → NPC-reaktiot → luontevat someketjut
+
+**Toteutetut komponentit:**
+
+1. ✅ **Dokumentaatio** (`docs/ambient-generator.md`)
+   - Täysi speksi ambient-järjestelmälle
+   - Arkkitehtuurikuvaus, datamallit, esimerkit
+
+2. ✅ **Migraatio** (`migrations/003_ambient_tables.sql`)
+   - `ambient_sources`: raaka API-data (replay-tuki)
+   - `ambient_events`: normalisoidut ärsykkeet (id, topic, intensity, sentiment, payload)
+   - `ambient_deliveries`: NPC-kohtainen jakeluloki (determinismi)
+
+3. ✅ **Ambient Worker** (`services/ambient_worker/`)
+   - Hakee sää/uutis/urheiludataa (mock-toteutus valmiina)
+   - Normalisoi ambient_events-tauluun
+   - Docker-service docker-compose.yml:ssä
+
+4. ✅ **Engine Distributor** (`services/engine/app/runner.py`)
+   - `distribute_ambient_events()` - jakaa eventit NPC:ille
+   - `should_deliver_ambient()` - deterministinen hash-pohjainen visibility
+   - `APPRAISAL_MATRIX` - topic + archetype → intent mapping
+   - Cooldown-järjestelmä (FEED 2h, CHAT 30min)
+   - Integrsoitu tick-looppiin (30 tickin välein)
+
+5. ✅ **NPC Appraisal Matrix**
+   - 10+ topic-tyyppiä (weather_snow, weather_rain, news_suomi, sports_jääkiekko...)
+   - Archetype-kohtaiset reaktiot (romantic, practical, anxious, gossip, stoic...)
+   - Intent-vaihtoehdot: POST_FEED, POST_CHAT, IGNORE
+
+6. ✅ **Worker-päivitykset** (`services/workers/app/worker.py`)
+   - `make_draft()` tukee ambient-drafteja
+   - `event_facts_fi()` käsittelee AMBIENT_SEEN eventit
+   - `build_prompt()` lisää ambient-faktat kontekstiin
+
+7. ✅ **Event Types Catalog** (`packages/shared/data/event_types.json`)
+   - AMBIENT_WEATHER, AMBIENT_NEWS_HEADLINE, AMBIENT_SPORTS_HEADLINE
+   - AMBIENT_SEEN (NPC:n havainto + reaktio)
+
+**Esimerkki lumisadeketjusta:**
+```
+1. ambient_worker: AMBIENT_WEATHER (weather_snow, intensity=0.8)
+2. engine: distribute → AMBIENT_SEEN(Noora), AMBIENT_SEEN(Kaisa)...
+3. appraisal:
+   - Noora (romantic) → POST_FEED "Lunta sataa. Onpa kaunista."
+   - Kaisa (practical) → POST_FEED "Ja taas lumityöt. Ei voi mitään."
+4. worker: LLM rewrites in character voice → posts-tauluun
+```
+
+**Käyttöönotto:**
+```bash
+cd koivulahti/infra
+docker-compose down
+docker-compose build
+docker-compose --profile gpu up -d
+# Migraatio ajetaan automaattisesti postgres-initistä
+```
+
+**Jatkotyöt:**
+- 🔲 Oikeat fetcherit (Open-Meteo, RSS)
+- 🔲 POST_SEEN ketjureaktiot (vastaukset toisten postauksiin)
+- 🔲 Paremmat few-shot esimerkit per NPC
+- 🔲 Rate limiting persistointi (nyt in-memory)
+
+---
 
 ## Session Summary (2025-12-16 PM) - Content Quality Overhaul
 

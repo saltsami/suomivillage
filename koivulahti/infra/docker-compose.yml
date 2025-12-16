@@ -144,5 +144,21 @@ services:
       redis:
         condition: service_healthy
 
+  ambient-worker:
+    build:
+      context: ..
+      dockerfile: services/ambient_worker/Dockerfile
+    environment:
+      ENV: ${ENV}
+      DATABASE_URL: ${DATABASE_URL}
+      AMBIENT_REGION: ${AMBIENT_REGION:-Keski-Suomi}
+      AMBIENT_POLL_SECONDS: ${AMBIENT_POLL_SECONDS:-3600}
+      AMBIENT_WEATHER_ENABLED: ${AMBIENT_WEATHER_ENABLED:-1}
+      AMBIENT_NEWS_ENABLED: ${AMBIENT_NEWS_ENABLED:-1}
+      AMBIENT_SPORTS_ENABLED: ${AMBIENT_SPORTS_ENABLED:-0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:

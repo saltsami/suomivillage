@@ -90,7 +90,24 @@ def event_facts_fi(event: dict) -> str:
     activity = payload.get("activity")
     satisfaction = payload.get("satisfaction")
 
-    parts = [f"paikka={place}"]
+    parts = []
+
+    # Handle AMBIENT_SEEN events specially
+    if t == "AMBIENT_SEEN":
+        ambient_topic = payload.get("topic", "")
+        summary = payload.get("summary_fi", "")
+        facts = payload.get("facts", [])
+        if ambient_topic:
+            parts.append(f"aihe={ambient_topic}")
+        if summary:
+            parts.append(f"tilanne={summary[:60]}")
+        if facts:
+            parts.append(f"faktat=[{', '.join(facts[:2])}]")
+        return ", ".join(parts) if parts else "ambient_event"
+
+    # Regular events
+    if place and place != "kylä":
+        parts.append(f"paikka={place}")
 
     if t == "SMALL_TALK" and targets:
         target_name = targets[0].replace("npc_", "").capitalize()
@@ -145,8 +162,12 @@ async def fetch_job() -> Dict[str, Any] | None:
     return json.loads(job_json)
 
 
-def make_draft(channel: str, event: Dict[str, Any], author_id: str) -> str:
+def make_draft(channel: str, event: Dict[str, Any], author_id: str, prompt_context: Dict[str, Any] = None) -> str:
     """Create a deterministic draft with variation based on event."""
+    # Check if ambient draft is provided in prompt_context
+    if prompt_context and prompt_context.get("draft"):
+        return prompt_context["draft"]
+
     event_type = event.get("type", "UNKNOWN")
     event_id = event.get("id", "evt")
     place_id = event.get("place_id", "")
@@ -254,6 +275,24 @@ def make_draft(channel: str, event: Dict[str, Any], author_id: str) -> str:
         ]
         return r.choice(opts).strip()
 
+    # --- AMBIENT_SEEN (fallback if no pre-written draft) ---
+    elif event_type == "AMBIENT_SEEN":
+        summary = payload.get("summary_fi", "")
+        ambient_topic = payload.get("topic", "")
+        if "weather" in ambient_topic:
+            opts = [
+                f"{summary[:50]}",
+                f"Näin säätiedotuksen. {summary[:40]}",
+            ]
+        elif "news" in ambient_topic:
+            opts = [
+                f"Kuulin uutiset. {summary[:40]}",
+                f"Uutisissa kerrottiin... {summary[:40]}",
+            ]
+        else:
+            opts = [f"{summary[:50]}"]
+        return r.choice(opts).strip()
+
     # --- Fallback ---
     else:
         if channel == "FEED":
@@ -262,9 +301,10 @@ def make_draft(channel: str, event: Dict[str, Any], author_id: str) -> str:
             return f"Oon {place_fi}. {mood_str if mood else 'Mitäs?'}"
 
 
-def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, Any] | None) -> str:
+def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, Any] | None, prompt_context: Dict[str, Any] = None) -> str:
     """Build draft-based prompt using style helpers - LLM rewrites draft in character voice."""
     author_id = (author_profile or {}).get("id", "npc")
+    prompt_context = prompt_context or {}
 
     # Get style instructions from profile (handles dict voice properly)
     style = style_from_profile(author_profile, channel, event)
@@ -272,8 +312,15 @@ def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, 
     # Get facts from event payload
     facts = event_facts_fi(event)
 
-    # Create deterministic draft
-    draft = make_draft(channel, event, author_id)
+    # For ambient events, add ambient-specific facts
+    if prompt_context.get("ambient_topic"):
+        ambient_payload = prompt_context.get("ambient_payload", {})
+        ambient_facts = ambient_payload.get("facts", [])
+        if ambient_facts:
+            facts += f", ambient_faktat=[{', '.join(ambient_facts)}]"
+
+    # Create deterministic draft (uses ambient draft if provided)
+    draft = make_draft(channel, event, author_id, prompt_context)
 
     if channel == "NEWS":
         return (
@@ -311,7 +358,7 @@ async def call_gateway(job: Dict[str, Any]) -> Dict[str, Any]:
     # Use catalog-based prompt building
     prompt = summary
     if event:
-        prompt = build_prompt(job["channel"], event, author_profile)
+        prompt = build_prompt(job["channel"], event, author_profile, prompt_context)
 
     payload = {
         "prompt": prompt,
