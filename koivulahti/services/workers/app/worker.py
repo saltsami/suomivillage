@@ -46,64 +46,108 @@ async def fetch_job() -> Dict[str, Any] | None:
     return json.loads(job_json)
 
 
-def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, Any] | None) -> str:
-    """Build channel-specific prompt using catalog templates."""
-    channel_key = f"{channel.lower()}_prompt"
-    prompt_config = PROMPT_CONFIG.get(channel_key, {})
-    system_msg = prompt_config.get("system", "")
-
-    # Build event description in natural Finnish
+def make_draft(channel: str, event: Dict[str, Any], author_name: str) -> str:
+    """Create a deterministic draft based on event - LLM will rewrite in character voice."""
     event_type = event.get("type", "UNKNOWN")
-    place_id = event.get("place_id", "tuntematon paikka")
-    actors = event.get("actors", [])
-    targets = event.get("targets", [])
-    payload = event.get("payload", {})
+    place_id = event.get("place_id", "")
+    place = place_id.replace("place_", "") if place_id else "kylällä"
 
-    # Create natural language description
-    actor_names = ", ".join([a.replace("npc_", "").capitalize() for a in actors]) if actors else "joku"
+    # Map place_id to Finnish location names
+    place_names = {
+        "kahvio": "kahviolla",
+        "sauna": "saunassa",
+        "kauppa": "kaupassa",
+        "paja": "pajalla",
+        "ranta": "rannalla",
+        "kylatalo": "kylätalolla",
+    }
+    place_fi = place_names.get(place, place + "ssa")
 
-    event_description = f"Tapahtuma: {event_type}"
-    if place_id != "tuntematon paikka":
-        event_description += f" paikassa {place_id.replace('place_', '')}"
-    if actors:
-        event_description += f". Osallistujat: {actor_names}"
-    if targets:
-        target_names = ", ".join([t.replace("npc_", "").capitalize() for t in targets])
-        event_description += f". Kohteena: {target_names}"
+    # Create simple draft based on event type
+    if event_type == "LOCATION_VISIT":
+        if channel == "FEED":
+            return f"Kävin {place_fi}."
+        else:  # CHAT
+            return f"Oon nyt {place_fi}."
 
-    # Add payload details if meaningful
-    if payload and isinstance(payload, dict):
-        for key, value in payload.items():
-            if key not in ["source", "tick"] and value:
-                event_description += f". {key}: {value}"
+    elif event_type == "SMALL_TALK":
+        targets = event.get("targets", [])
+        if targets:
+            target = targets[0].replace("npc_", "").capitalize()
+            if channel == "FEED":
+                return f"Juttelin {target}n kanssa {place_fi}."
+            else:
+                return f"Näin {target}n {place_fi}. Juteltiin hetki."
+        else:
+            if channel == "FEED":
+                return f"Kävin {place_fi}. Oli mukavaa."
+            else:
+                return f"Oon {place_fi}. Mitä sulle kuuluu?"
 
-    # Build user prompt with system context + event + profile
-    user_prompt = f"{system_msg}\n\n"
-    user_prompt += f"Tapahtuman tiedot:\n{event_description}\n\n"
+    elif event_type == "CUSTOMER_INTERACTION":
+        if channel == "FEED":
+            return f"Asiakkaita {place_fi} tänään."
+        else:
+            return f"Töissä {place_fi}. Kiireistä."
 
+    elif event_type == "RUMOR_SPREAD":
+        return f"Kuulin juttuja {place_fi}. En tiedä mitä uskoa."
+
+    else:
+        # Generic fallback
+        if channel == "FEED":
+            return f"Tapahtui jotain {place_fi}."
+        else:
+            return f"Oon {place_fi} nyt."
+
+
+def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, Any] | None) -> str:
+    """Build draft-based prompt - LLM rewrites draft in character voice."""
+
+    # Get author info
+    author_name = ""
+    personality = ""
+    voice = ""
     if author_profile:
-        name = author_profile.get("name", "")
+        author_name = author_profile.get("name", "")
         personality = author_profile.get("personality", "")
         voice = author_profile.get("voice", "")
-        if name:
-            user_prompt += f"Hahmo: {name}\n"
+
+    # Create deterministic draft
+    draft = make_draft(channel, event, author_name)
+
+    # Build the rewrite prompt
+    if channel == "NEWS":
+        # NEWS is different - neutral style, not first person
+        event_type = event.get("type", "UNKNOWN")
+        place = event.get("place_id", "").replace("place_", "")
+        actors = event.get("actors", [])
+        actor_str = ", ".join([a.replace("npc_", "").capitalize() for a in actors[:2]]) if actors else "Kylän asukas"
+
+        return (
+            f"Kirjoita lyhyt uutisjuttu (max 2 lausetta, neutraali tyyli).\n\n"
+            f"FAKTAT: {event_type} tapahtui paikassa {place}. Osallisena {actor_str}.\n\n"
+            f"Kirjoita uutinen suomeksi:"
+        )
+
+    # FEED/CHAT: rewrite draft in character voice
+    prompt = f"Kirjoita tämä uudelleen omalla tyylilläsi. 1. persoona, max 2 lausetta.\n\n"
+    prompt += f"DRAFT: {draft}\n\n"
+
+    if author_name:
+        prompt += f"Olet {author_name}."
         if personality:
-            user_prompt += f"Luonne: {personality}\n"
+            prompt += f" Luonteesi: {personality}."
         if voice:
-            user_prompt += f"Tyyli: {voice}\n"
-        user_prompt += "\n"
+            prompt += f" Tyylisi: {voice}."
+        prompt += "\n\n"
 
-    # Add output instruction
     if channel == "FEED":
-        user_prompt += "Kirjoita lyhyt somepostaus (max 280 merkkiä) tästä tapahtumasta hahmon näkökulmasta suomeksi. Ole luonnollinen ja inhimillinen."
-    elif channel == "CHAT":
-        user_prompt += "Kirjoita lyhyt chat-viesti (max 220 merkkiä) suomeksi. Ole reagoiva ja keskusteleva."
-    elif channel == "NEWS":
-        user_prompt += "Kirjoita lyhyt uutisotsikko ja tiivistelmä (max 480 merkkiä) neutraalisti suomeksi."
+        prompt += "Kirjoita somepostaus (rento, arkinen suomi):"
     else:
-        user_prompt += f"Kirjoita lyhyt {channel}-julkaisu suomeksi."
+        prompt += "Kirjoita chat-viesti (lyhyt, keskusteleva):"
 
-    return user_prompt
+    return prompt
 
 
 async def call_gateway(job: Dict[str, Any]) -> Dict[str, Any]:

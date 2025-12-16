@@ -155,6 +155,43 @@ curl http://localhost:8082/events?limit=5
     - Live feed/chat/news streams
     - Relationship graph visualization
 
+## Session Summary (2025-12-16 PM) - Content Quality Overhaul
+
+**Ongelma:** Postaukset olivat sekavia - kertoja-tyyli, 3. persoona, meta-puhe, väärä konteksti.
+
+**Korjaukset:**
+
+1. ✅ **Draft-pohjainen renderöinti** (worker.py)
+   - `make_draft()` luo deterministisen pohjan eventistä
+   - LLM vain uudelleenmuotoilee hahmon äänellä
+   - Ei enää "LLM keksii kaiken" -lähestymistapaa
+
+2. ✅ **Tiukempi system-ohje** (gateway main.py)
+   - Pakolliset säännöt: 1. persoona (FEED/CHAT), max 2 lausetta
+   - Selkeät esimerkit hyvistä ja huonoista postauksista
+   - Kielletyt fraasit: "Kuvittele", "Tilannekuva", "Taustaksi" jne.
+
+3. ✅ **Quality gate + polish pass**
+   - `has_banned_phrases()` tarkistaa kielletyt ilmaisut
+   - `has_third_person_self()` tarkistaa 3. persoonan itsestä
+   - Automaattinen polish-pass jos ongelmia löytyy
+
+4. ✅ **Uudet testit** (test_gateway_limits.py)
+   - `test_no_narrator_phrases` - ei meta-puhetta
+   - `test_first_person_feed_chat` - 1. persoona
+   - `test_no_third_person_self` - ei "Kaisa meni"
+
+5. ✅ **Village monitor parannukset**
+   - Service status -rivi (●db ●redis ●gateway jne.)
+   - Leveämpi tekstikenttä postauksille
+   - Shebang käyttää venviä automaattisesti
+
+**Testitulokset:** 13 passed, 1 xfailed, 6 xpassed
+
+**Merge:** `feature/llm-gateway-schema-improvements` → `main` ✅
+
+---
+
 ## Session Summary (2025-12-16) - LLM Gateway & Test Suite
 
 **LLM Gateway parannukset:**

@@ -27,22 +27,36 @@ app.add_middleware(
 
 SYSTEM_JSON_INSTRUCTION = (
     "Vastaa VAIN valid JSON-objektina.\n\n"
-    "TIUKAT SÄÄNNÖT:\n"
-    "- Max 2 lausetta text-kentässä\n"
-    "- Ei kappaleita tai rivinvaihtoja textissä\n"
-    "- Ei johdantoja ('Tässä on...', 'Kirjoitan...')\n"
-    "- FEED/CHAT: puhekieli, rento tyyli\n"
-    "- NEWS: neutraali uutiskieli\n"
-    "- Vain itse postaus text-kenttään, ei metatietoja\n\n"
+    "EHDOTTOMAT SÄÄNNÖT:\n"
+    "- FEED/CHAT: Kirjoita AINA 1. persoonassa (minä/mä/oon) - kuin kirjoittaisit omaan someesi\n"
+    "- NEWS: Neutraali 3. persoona, uutistyyli\n"
+    "- Max 2 lyhyttä lausetta, ei rivinvaihtoja\n"
+    "- Ei meta-puhetta: 'Kuvittele', 'Tilannekuva', 'Taustaksi', 'Seuraamme'\n"
+    "- Ei johdantoja: 'Tässä on', 'Kirjoitan', 'Haluan kertoa'\n"
+    "- Ei kolmatta persoonaa itsestä (jos olet Kaisa, ÄLÄ kirjoita 'Kaisa meni')\n"
+    "- Ei emojitulvaa (max 1 emoji)\n"
+    "- Suora, arkinen suomi - kuin tekstiviesti kaverille\n\n"
+    "ESIMERKKEJÄ (FEED/CHAT):\n"
+    "✓ 'Kävin kahviolla. Tilaukset meni taas sekaisin mut ei se mitään.'\n"
+    "✓ 'Saunassa oli hyvä fiilis. Nähään illalla!'\n"
+    "✓ 'Pajalla taas. Asiakkaita riittää tänään.'\n"
+    "✗ 'Kuvittele tilanne jossa Kaisa menee kahviolle...' (meta-puhetta)\n"
+    "✗ 'Tilannekuva: Saunassa oli hieno tunnelma.' (kertoja-tyyli)\n"
+    "✗ 'Kaisa kävi saunassa ja nautti.' (3. persoona itsestä)\n\n"
     "JSON-kentät:\n"
-    "- channel: kanava (FEED/CHAT/NEWS)\n"
-    "- author_id: kirjoittajan ID\n"
-    "- source_event_id: tapahtuman ID\n"
+    "- channel, author_id, source_event_id: annetut arvot\n"
     "- tone: friendly/neutral/defensive/snarky/concerned/formal/hyped\n"
-    "- text: postaus suomeksi (FEED max 280, CHAT max 220, NEWS max 480 merkkiä)\n"
-    "- tags: 1-5 lyhyttä asiasanaa suomeksi\n"
-    "- safety_notes: null tai huomio"
+    "- text: postaus suomeksi (FEED max 280, CHAT max 220, NEWS max 480)\n"
+    "- tags: 1-3 asiasanaa\n"
+    "- safety_notes: null"
 )
+
+# Banned phrases that indicate narrator/meta style
+BANNED_PHRASES = [
+    "kuvittele", "tilannekuva", "taustaksi", "seuraamme", "tässä on",
+    "kirjoitan", "haluan kertoa", "kertomuksessa", "tarinassa", "novellissa",
+    "päähenkilö", "hahmo tekee", "tilanne jossa",
+]
 
 
 class GenerateRequest(BaseModel):
@@ -223,6 +237,26 @@ def extract_json(text: str) -> Dict[str, Any] | None:
         return None
 
 
+def has_banned_phrases(text: str) -> bool:
+    """Check if text contains banned narrator/meta phrases."""
+    text_lower = text.lower()
+    return any(phrase in text_lower for phrase in BANNED_PHRASES)
+
+
+def has_third_person_self(text: str, author_id: str) -> bool:
+    """Check if author refers to themselves in 3rd person."""
+    # Extract name from author_id (e.g., npc_kaisa -> Kaisa)
+    name = author_id.replace("npc_", "").replace("NPC_", "").capitalize()
+    # Check if name appears as a subject (followed by verb-like patterns)
+    patterns = [
+        f"{name} meni", f"{name} oli", f"{name} kävi", f"{name} teki",
+        f"{name} sanoi", f"{name} ajatteli", f"{name} tunsi",
+    ]
+    text_lower = text.lower()
+    name_lower = name.lower()
+    return any(p.lower() in text_lower for p in patterns) or f"{name_lower} " in text_lower[:50]
+
+
 def normalize_response(raw: Dict[str, Any], request: GenerateRequest, fallback_text: str) -> GenerateResponse:
     # Always use request values for locked fields (LLM schema const not reliable)
     channel = request.channel
@@ -311,7 +345,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
         )
 
     try:
-        return normalize_response(raw_json, request, raw_text)
+        response = normalize_response(raw_json, request, raw_text)
     except Exception as e:
         print(f"[llm-gateway] normalize failed: {e}")
         return GenerateResponse(
@@ -323,3 +357,34 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             tags=[],
             safety_notes="schema_validation_failed",
         )
+
+    # Quality check: polish if banned phrases or third-person-self detected
+    needs_polish = False
+    if request.channel in ("FEED", "CHAT"):
+        if has_banned_phrases(response.text):
+            print(f"[llm-gateway] Banned phrase detected, polishing")
+            needs_polish = True
+        elif has_third_person_self(response.text, request.author_id):
+            print(f"[llm-gateway] Third-person-self detected, polishing")
+            needs_polish = True
+
+    if needs_polish:
+        polish_prompt = (
+            f"Korjaa tämä teksti. Kirjoita 1. persoonassa (minä/mä), "
+            f"max 2 lausetta, arkinen suomi, ei meta-puhetta.\n\n"
+            f"ALKUPERÄINEN: {response.text}\n\n"
+            f"KORJATTU (vain teksti, ei JSON):"
+        )
+        polish_messages = [{"role": "user", "content": polish_prompt}]
+        try:
+            polish_data, _ = await call_llama_cpp(request, 0.2, polish_messages)
+            polished_text = extract_text(polish_data).strip()
+            # Clean up: remove quotes if LLM wrapped it
+            polished_text = polished_text.strip('"\'')
+            if polished_text and len(polished_text) < 300 and not has_banned_phrases(polished_text):
+                response.text = polished_text
+                print(f"[llm-gateway] Polish successful")
+        except Exception as e:
+            print(f"[llm-gateway] Polish failed: {e}")
+
+    return response

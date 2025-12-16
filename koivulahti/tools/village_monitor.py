@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S bash -c '"$(dirname "$0")/../venv/bin/python3" "$0" "$@"'
 """
 Koivulahti Village Monitor - Live activity feed for the simulation.
 
@@ -16,8 +16,12 @@ import argparse
 import os
 import sys
 import time
+import socket
+import subprocess
 from datetime import datetime, timezone
 from typing import Optional
+from urllib.request import urlopen
+from urllib.error import URLError
 
 try:
     import psycopg2
@@ -62,6 +66,64 @@ def get_db_connection():
         "postgresql://koivulahti:koivulahti@localhost:5432/koivulahti"
     )
     return psycopg2.connect(db_url)
+
+
+def check_service(url: str, timeout: float = 1.0) -> tuple[bool, str]:
+    """Check if a HTTP service is responding."""
+    try:
+        resp = urlopen(url, timeout=timeout)
+        return True, "ok"
+    except URLError as e:
+        return False, "down"
+    except Exception:
+        return False, "err"
+
+
+def check_docker_container(name: str) -> tuple[bool, str]:
+    """Check if a docker container is running."""
+    try:
+        result = subprocess.run(
+            ["docker", "ps", "--filter", f"name={name}", "--format", "{{.Status}}"],
+            capture_output=True, text=True, timeout=2
+        )
+        status = result.stdout.strip()
+        if not status:
+            return False, "stopped"
+        if "unhealthy" in status.lower():
+            return True, "unhealthy"
+        if "healthy" in status.lower() or "Up" in status:
+            return True, "ok"
+        return True, status[:10]
+    except Exception:
+        return False, "err"
+
+
+def get_services_status() -> dict:
+    """Check all services and return their status."""
+    services = {}
+
+    # HTTP endpoints
+    endpoints = {
+        "api": "http://localhost:8082/health",
+        "gateway": "http://localhost:8081/health",
+        "llm": "http://localhost:8080/health",
+    }
+    for name, url in endpoints.items():
+        ok, status = check_service(url)
+        services[name] = {"ok": ok, "status": status}
+
+    # Docker containers (for non-HTTP services)
+    containers = {
+        "engine": "koivulahti-engine",
+        "workers": "koivulahti-workers",
+        "redis": "koivulahti-redis",
+        "db": "koivulahti-postgres",
+    }
+    for name, container in containers.items():
+        ok, status = check_docker_container(container)
+        services[name] = {"ok": ok, "status": status}
+
+    return services
 
 
 def fetch_recent_events(
@@ -178,11 +240,10 @@ def truncate(text: str, max_len: int = 50) -> str:
 
 def create_events_table(events: list) -> Table:
     """Create a Rich table for events."""
-    table = Table(title="Recent Events", box=None, expand=True)
-    table.add_column("Time", style="dim", width=8)
-    table.add_column("Type", width=22)
-    table.add_column("Who", width=12)
-    table.add_column("Where", width=15)
+    table = Table(title="Events", box=None, expand=True)
+    table.add_column("Type", width=18)
+    table.add_column("Who", width=8)
+    table.add_column("Where", width=10)
 
     for event in events:
         event_id, event_type, actors, targets, place_id, sim_ts, ts, payload = event
@@ -191,7 +252,6 @@ def create_events_table(events: list) -> Table:
         type_text = Text(event_type, style=color)
 
         table.add_row(
-            format_time(sim_ts),
             type_text,
             format_actors(actors),
             (place_id or "-").replace("place_", ""),
@@ -203,10 +263,9 @@ def create_events_table(events: list) -> Table:
 def create_posts_table(posts: list) -> Table:
     """Create a Rich table for posts."""
     table = Table(title="Recent Posts", box=None, expand=True)
-    table.add_column("Time", style="dim", width=8)
     table.add_column("Ch", width=4)
-    table.add_column("Author", width=10)
-    table.add_column("Text", width=45)
+    table.add_column("Who", width=8)
+    table.add_column("Text", no_wrap=False)
 
     for post in posts:
         post_id, author_id, channel, text, tone, created_at, source_event_id = post
@@ -215,25 +274,40 @@ def create_posts_table(posts: list) -> Table:
         ch_short = channel[:4] if channel else "?"
 
         table.add_row(
-            format_time(created_at),
             Text(ch_short, style=ch_color),
-            author_id.replace("npc_", "") if author_id else "-",
-            truncate(text, 45),
+            author_id.replace("npc_", "").replace("NPC_", "") if author_id else "-",
+            text or "",
         )
 
     return table
 
 
-def create_stats_panel(stats: dict) -> Panel:
-    """Create a stats panel."""
+def create_stats_panel(stats: dict, services: dict) -> Panel:
+    """Create a stats panel with service status."""
     sim_time = format_time(stats["sim_ts"]) if stats["sim_ts"] else "-"
     real_time = format_time(stats["real_ts"]) if stats["real_ts"] else "-"
+
+    # Format service status
+    svc_parts = []
+    svc_order = ["db", "redis", "llm", "gateway", "api", "engine", "workers"]
+    for name in svc_order:
+        if name in services:
+            svc = services[name]
+            if svc["ok"] and svc["status"] == "ok":
+                svc_parts.append(f"[green]●[/]{name}")
+            elif svc["ok"]:  # running but unhealthy
+                svc_parts.append(f"[yellow]●[/]{name}")
+            else:
+                svc_parts.append(f"[red]●[/]{name}")
+
+    svc_line = " ".join(svc_parts)
 
     content = (
         f"[bold]Events:[/] {stats['events']}  "
         f"[bold]Posts:[/] {stats['posts']}  "
         f"[bold]Sim:[/] {sim_time}  "
-        f"[bold]Real:[/] {real_time}"
+        f"[bold]Real:[/] {real_time}\n"
+        f"{svc_line}"
     )
     return Panel(content, title="[bold cyan]KOIVULAHTI[/]", border_style="cyan")
 
@@ -241,6 +315,7 @@ def create_stats_panel(stats: dict) -> Panel:
 def create_display(conn, args) -> Layout:
     """Create the full display layout."""
     stats = fetch_stats(conn)
+    services = get_services_status()
     events = fetch_recent_events(
         conn,
         limit=args.limit,
@@ -256,12 +331,12 @@ def create_display(conn, args) -> Layout:
 
     layout = Layout()
     layout.split_column(
-        Layout(create_stats_panel(stats), size=3),
+        Layout(create_stats_panel(stats, services), size=4),
         Layout(name="main"),
     )
     layout["main"].split_row(
-        Layout(create_events_table(events)),
-        Layout(create_posts_table(posts)),
+        Layout(create_events_table(events), ratio=1),
+        Layout(create_posts_table(posts), ratio=2),
     )
 
     return layout

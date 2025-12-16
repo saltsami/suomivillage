@@ -130,3 +130,88 @@ def test_text_is_finnish(case_name, client, gateway_url, prompt_cases):
     has_finnish = any(ind in text for ind in finnish_indicators)
 
     assert has_finnish, f"Text doesn't appear to be Finnish: {post['text']}"
+
+
+# --- Quality Gate Tests (new) ---
+
+NARRATOR_PHRASES = [
+    "kuvittele", "tilannekuva", "taustaksi", "seuraamme", "kertomuksessa",
+    "tarinassa", "novellissa", "päähenkilö", "hahmo tekee", "tilanne jossa",
+]
+
+
+@pytest.mark.parametrize("case_name", ["feed_simple", "chat_snarky", "feed_rumor"])
+def test_no_narrator_phrases(case_name, client, gateway_url, prompt_cases):
+    """Test that FEED/CHAT posts don't contain narrator/meta phrases."""
+    case = next(x for x in prompt_cases if x["name"] == case_name)
+
+    payload = {
+        "prompt": case["prompt"],
+        "channel": case["channel"],
+        "author_id": case["author_id"],
+        "source_event_id": case["source_event_id"],
+        "context": {"lang": "fi", "test": True},
+        "temperature": 0.5,
+    }
+
+    post = call_generate(client, gateway_url, payload)
+    text_lower = post["text"].lower()
+
+    for phrase in NARRATOR_PHRASES:
+        assert phrase not in text_lower, f"Narrator phrase '{phrase}' found in: {post['text']}"
+
+
+@pytest.mark.parametrize("case_name", ["feed_simple", "chat_snarky", "chat_friendly"])
+@pytest.mark.xfail(reason="Soft test - LLM may occasionally miss 1st person", strict=False)
+def test_first_person_feed_chat(case_name, client, gateway_url, prompt_cases):
+    """Test that FEED/CHAT posts use first person (minä/mä/oon etc.)."""
+    case = next(x for x in prompt_cases if x["name"] == case_name)
+
+    payload = {
+        "prompt": case["prompt"],
+        "channel": case["channel"],
+        "author_id": case["author_id"],
+        "source_event_id": case["source_event_id"],
+        "context": {"lang": "fi", "test": True},
+        "temperature": 0.5,
+    }
+
+    post = call_generate(client, gateway_url, payload)
+    text_lower = post["text"].lower()
+
+    # First person indicators in Finnish
+    first_person = ["minä", "mä", "mun", "mulla", "mulle", "oon", "olin", "kävin", "menin", "näin", "kuulin"]
+    has_first_person = any(fp in text_lower for fp in first_person)
+
+    assert has_first_person, f"No first person found in FEED/CHAT: {post['text']}"
+
+
+@pytest.mark.parametrize("case_name", ["feed_simple", "chat_snarky"])
+def test_no_third_person_self(case_name, client, gateway_url, prompt_cases):
+    """Test that author doesn't refer to themselves in 3rd person."""
+    case = next(x for x in prompt_cases if x["name"] == case_name)
+
+    payload = {
+        "prompt": case["prompt"],
+        "channel": case["channel"],
+        "author_id": case["author_id"],
+        "source_event_id": case["source_event_id"],
+        "context": {"lang": "fi", "test": True},
+        "temperature": 0.5,
+    }
+
+    post = call_generate(client, gateway_url, payload)
+    text_lower = post["text"].lower()
+    author_name = case["author_id"].replace("npc_", "").lower()
+
+    # Check if author name appears as subject (followed by verb patterns)
+    bad_patterns = [
+        f"{author_name} meni",
+        f"{author_name} oli",
+        f"{author_name} kävi",
+        f"{author_name} teki",
+        f"{author_name} sanoi",
+    ]
+
+    for pattern in bad_patterns:
+        assert pattern not in text_lower, f"Third-person self '{pattern}' in: {post['text']}"
