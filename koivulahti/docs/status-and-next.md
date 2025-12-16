@@ -206,13 +206,19 @@ curl http://localhost:8082/events?limit=5
 4. worker: LLM rewrites in character voice → posts-tauluun
 ```
 
+**Testattu ja toimii (2025-12-17):**
+- Ambient worker luo weather + news eventit
+- Engine jakaa NPC:ille ja 10 reaktiota enqueued
+- Appraisal matrix toimii: "npc_sanni -> POST_FEED on weather_snow"
+
 **Käyttöönotto:**
 ```bash
 cd koivulahti/infra
 docker-compose down
 docker-compose build
 docker-compose --profile gpu up -d
-# Migraatio ajetaan automaattisesti postgres-initistä
+# Jos DB jo olemassa, aja migraatio manuaalisesti:
+docker exec -i koivulahti-postgres-1 psql -U koivulahti -d koivulahti < ../migrations/003_ambient_tables.sql
 ```
 
 **Jatkotyöt:**
