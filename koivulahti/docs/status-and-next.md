@@ -190,6 +190,35 @@ curl http://localhost:8082/events?limit=5
 
 **Merge:** `feature/llm-gateway-schema-improvements` → `main` ✅
 
+### 🔴 Jäljellä olevat ongelmat (laatu ei vielä riittävä)
+
+Postaukset teknisesti oikein (1. persoona, ei meta-puhetta) mutta **sisältö geneeristä ja toistavaa:**
+
+```
+[CHAT] Leena: Kahviolla. Sovitaan tästä. Kuunnellaan kaikki.
+[FEED] Riku: Asiakkaita kaupassa tänään. Fakta.
+[CHAT] Aila: En sano nimiä, mutta oon kahviolla. Kyllähän minä kuulin...
+```
+
+**Havaitut ongelmat:**
+1. **Liian geneerinen** - kaikki sanoo vain "Kahviolla" tai "Asiakkaita X tänään"
+2. **Toistuvat fraasit** - "No joo siis", "No katsotaan", "Kyllä tästä"
+3. **Persoonallisuus ei erotu** - Aila, Kaisa, Timo kuulostavat samalta
+4. **Ei oikeaa sisältöä** - draft on liian tyhjä, LLM ei keksi mitään kiinnostavaa
+5. **Sekavia yhdistelmiä** - "En sano nimiä, mutta oon kahviolla" (???)
+
+**Mahdolliset korjaukset:**
+
+| Vaihtoehto | Työmäärä | Vaikutus |
+|------------|----------|----------|
+| A) Rikkaammat draftit (lisää kontekstia eventistä) | Pieni | Keskisuuri |
+| B) Few-shot esimerkit per NPC-persoonallisuus | Keskisuuri | Suuri |
+| C) Isompi/parempi malli (Qwen 14B, Mistral-Nemo) | Suuri | Suuri |
+| D) Fine-tune nykyistä mallia esimerkeillä | Suuri | Suuri |
+| E) Yksinkertaista: template-pohjaiset postaukset + satunnaisuus | Pieni | Keskisuuri |
+
+**Suositus:** Kokeile ensin A+B (rikkaammat draftit + few-shot). Jos ei riitä → mallinvaihto.
+
 ---
 
 ## Session Summary (2025-12-16) - LLM Gateway & Test Suite
