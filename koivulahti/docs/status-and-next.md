@@ -219,6 +219,34 @@ Postaukset teknisesti oikein (1. persoona, ei meta-puhetta) mutta **sisältö ge
 
 **Suositus:** Kokeile ensin A+B (rikkaammat draftit + few-shot). Jos ei riitä → mallinvaihto.
 
+### ✅ Korjattu (2025-12-16 iltapäivä)
+
+**Konsultin palautteen perusteella tehty:**
+
+1. **Engine: Rikkaat event payloadit**
+   - `PAYLOAD_OPTIONS` dict: topics, items, moods, activities per event type
+   - `build_rich_payload()` generoi sisältöä joka eventille
+   - SMALL_TALK nyt 40% todennäköisyydellä sisältää target NPC:n
+
+2. **Worker: Style-helperit**
+   - `rng_for()` - deterministinen satunnaisuus event+author perusteella
+   - `style_from_profile()` - muuntaa voice-dictin luonnolliseksi ohjeeksi
+   - `event_facts_fi()` - poimii payloadista faktat promptiin
+   - `make_draft()` - 3 variaatiota per event-tyyppi, käyttää payloadin dataa
+
+3. **Debug logging**
+   - Worker logittaa author_id:t ja varoittaa mismatcheista
+
+**Tulos:** Postaukset sisältävät nyt konkreettisia yksityiskohtia:
+```
+ENNEN: "Kahviolla."
+JÄLKEEN: "Riku oli kahviolla. Kesä on jo täällä."
+         "Töissä kaupassa. Sanomalehden tänään."
+         "Asiakkaita riitti pajalla. Rauhallista tänään."
+```
+
+**Jäljellä:** LLM konkatenoi vielä joskus outosti - tarvitsee ehkä parempia few-shot esimerkkejä tai mallin säätöä.
+
 ---
 
 ## Session Summary (2025-12-16) - LLM Gateway & Test Suite
