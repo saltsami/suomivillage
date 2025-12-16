@@ -224,9 +224,10 @@ def extract_json(text: str) -> Dict[str, Any] | None:
 
 
 def normalize_response(raw: Dict[str, Any], request: GenerateRequest, fallback_text: str) -> GenerateResponse:
-    channel = str(raw.get("channel") or request.channel)
-    author_id = str(raw.get("author_id") or request.author_id)
-    source_event_id = str(raw.get("source_event_id") or request.source_event_id)
+    # Always use request values for locked fields (LLM schema const not reliable)
+    channel = request.channel
+    author_id = request.author_id
+    source_event_id = request.source_event_id
     tone = str(raw.get("tone") or "neutral")
     text = str(raw.get("text") or fallback_text or "")
 

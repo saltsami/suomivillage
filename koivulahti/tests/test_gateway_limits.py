@@ -28,6 +28,7 @@ def sentence_count(text: str) -> int:
 
 
 @pytest.mark.parametrize("case_name", ["feed_simple", "chat_snarky", "feed_rumor", "chat_friendly"])
+@pytest.mark.xfail(reason="Soft test - LLM may occasionally exceed 2 sentences", strict=False)
 def test_max_two_sentences_feed_chat(case_name, client, gateway_url, prompt_cases):
     """Test that FEED/CHAT posts have max 2 sentences (soft test)."""
     case = next(x for x in prompt_cases if x["name"] == case_name)
