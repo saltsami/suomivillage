@@ -58,6 +58,11 @@ Updated: 2025-12-14
 
 ### Testing & Documentation
 - ✅ Smoke tests passing (API health, events, posts, LLM gateway)
+- ✅ **Pytest test suite** for LLM gateway:
+  - `tests/test_gateway_contract.py` - schema validation, const locks
+  - `tests/test_gateway_limits.py` - sentence limits, bad openers, Finnish check
+  - `scripts/smoke_gateway.py` - standalone smoke script
+  - `tests/prompts_fi.json` - 6 Finnish test prompts
 - ✅ **Comprehensive documentation**:
   - README.md with quick start guide
   - architecture.md with 5 Mermaid diagrams (system, event flow, tick flow, impact scoring, data models)
@@ -113,7 +118,9 @@ curl http://localhost:8082/events?limit=5
    - Verify determinism by replaying from seed
 
 7. **Better LLM gateway**
-   - JSON repair logic for malformed responses
+   - ✅ JSON repair logic for malformed responses (implemented)
+   - ✅ Dynamic JSON schema with const locks and per-channel limits
+   - ✅ 3-level fallback (json_schema → json_object+schema → json_object)
    - Response caching (Redis)
    - Prompt compression for long contexts
 
@@ -147,6 +154,40 @@ curl http://localhost:8082/events?limit=5
     - NPC profiles & relationships
     - Live feed/chat/news streams
     - Relationship graph visualization
+
+## Session Summary (2025-12-16) - LLM Gateway & Test Suite
+
+**LLM Gateway parannukset:**
+- ✅ Dynaaminen JSON-schema per request (`build_json_schema()`)
+- ✅ Kanavakohtaiset merkkirajoitukset: FEED 280, CHAT 220, NEWS 480
+- ✅ `const` lukitsee channel/author_id/source_event_id schemassa
+- ✅ 3-tasoinen fallback: json_schema → json_object+schema → json_object → v1/completions → /completion
+- ✅ JSON repair loop epävalidille outputille (yrittää korjata LLM:llä)
+- ✅ Tiukempi system-ohje (max 2 lausetta, ei johdantoja)
+
+**Pytest-testipaketti:**
+- ✅ `tests/conftest.py` - fixtures (client, gateway_url, prompt_cases)
+- ✅ `tests/prompts_fi.json` - 6 suomenkielistä testitapausta
+- ✅ `tests/test_gateway_contract.py` - schema/const/pituus validaatio
+- ✅ `tests/test_gateway_limits.py` - soft-testit (2 lausetta, bad openers, suomi)
+- ✅ `scripts/smoke_gateway.py` - standalone smoke script
+- ✅ `requirements-dev.txt` - pytest + httpx
+
+**Jatkotyöt (pending):**
+- 🔲 `test_gateway_fallbacks.py` - vaatii debug-headerin `x-force-fallback`
+- 🔲 `test_gateway_repair.py` - vaatii debug-headerin `x-break-json`
+- 🔲 Gateway: lisää debug-headerit (vain ENV=dev)
+- 🔲 Response caching (Redis)
+
+**Testien ajo:**
+```bash
+pip install -r requirements-dev.txt
+LLM_GATEWAY_URL=http://localhost:8081 pytest tests/ -v
+# tai standalone:
+python scripts/smoke_gateway.py
+```
+
+---
 
 ## Session Summary (2025-12-14 Night) - DB Cleanup COMPLETED ✅
 

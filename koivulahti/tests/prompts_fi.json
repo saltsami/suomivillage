@@ -1,0 +1,44 @@
+[
+  {
+    "name": "feed_simple",
+    "channel": "FEED",
+    "author_id": "Petri",
+    "source_event_id": "evt_test_001",
+    "prompt": "Tee lyhyt somepostaus kylän Facebook-tyyliin: torilla jaettiin toripaikkoja ja se herätti keskustelua."
+  },
+  {
+    "name": "chat_snarky",
+    "channel": "CHAT",
+    "author_id": "Sanni",
+    "source_event_id": "evt_test_002",
+    "prompt": "Kirjoita chat-viesti kaverille: kahviolla meni tilaus sekaisin, mutta ei iso juttu. Sävy: hieman piikikäs."
+  },
+  {
+    "name": "news_verified",
+    "channel": "NEWS",
+    "author_id": "Petri",
+    "source_event_id": "evt_test_003",
+    "prompt": "Kirjoita neutraali uutiskooste: toripaikat ja talkoot puhuttavat, illalla lyhyt sähkökatko. Merkitse epävarmuus vain jos epävarma."
+  },
+  {
+    "name": "feed_rumor",
+    "channel": "FEED",
+    "author_id": "Leena",
+    "source_event_id": "evt_test_004",
+    "prompt": "Tee lyhyt somepostaus: kylällä liikkuu huhu että talkookahvit loppui. Älä väitä varmaksi, vaan vihjaa huhuna."
+  },
+  {
+    "name": "chat_friendly",
+    "channel": "CHAT",
+    "author_id": "Aila",
+    "source_event_id": "evt_test_005",
+    "prompt": "Kirjoita ystävällinen chat-viesti: kerro että näit tutun saunalla ja vaihtoitte kuulumisia."
+  },
+  {
+    "name": "feed_event",
+    "channel": "FEED",
+    "author_id": "Jari",
+    "source_event_id": "evt_test_006",
+    "prompt": "Tee lyhyt somepostaus kauppiaan näkökulmasta: kaupassa oli kiireinen päivä, asiakkaita riitti."
+  }
+]
