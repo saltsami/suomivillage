@@ -211,6 +211,38 @@ curl http://localhost:8082/events?limit=5
 - Engine jakaa NPC:ille ja 10 reaktiota enqueued
 - Appraisal matrix toimii: "npc_sanni -> POST_FEED on weather_snow"
 
+### Korjaus: Archetype Mapping (2025-12-17 iltapäivä)
+
+**Ongelma:** NPC:den persoonallisuudet eivät erottuneet postauksissa. Kaikki sanoivat "Lunta sataa, liukasta paikoin."
+
+**Juurisyy:** Catalog-arkkityypit (esim. `gossip_amplifier`) eivät vastanneet APPRAISAL_MATRIX:n avaimia (esim. `gossip`).
+
+**Korjaus:** Lisätty `ARCHETYPE_MAPPING` dict, joka muuntaa catalog-arkkityypit appraisal-arkkityypeiksi:
+```python
+ARCHETYPE_MAPPING = {
+    "gossip_amplifier": "gossip",
+    "aesthetic_poster": "romantic",
+    "provoker": "political",
+    "peacekeeper": "stoic",
+    ...
+}
+```
+
+**Testitulokset (korjauksen jälkeen):**
+
+| NPC | Catalog archetype | Mapped | Post |
+|-----|------------------|--------|------|
+| npc_kaisa | catalyst | social | "Lunta sataa! Kuka lähtee pulkkamäkeen?" |
+| npc_noora | brand_manager | anxious | "Liukasta paikoin, varoakaa!" |
+| npc_aila | gossip_amplifier | gossip | "Kuulin myös, kaukana se on, vai?" |
+| npc_osku | borrow_drama_engine | gossip | "Kuulin... Mitäs muut?" |
+| npc_riku | provoker | political | "Kunnan pitäisi hoitaa" |
+| npc_miia | hustler | practical | "Ei voi mitään" |
+| npc_leena | peacekeeper | stoic | *(IGNORE - ei postaa)* |
+| npc_petri | editor | stoic | *(IGNORE - ei postaa)* |
+
+**Tulos:** NPC-persoonallisuudet erottuvat selkeästi. Stoic-tyypit ignoroivat sään, gossip-tyypit kyselevät muilta, poliittiset valittavat kunnasta.
+
 **Käyttöönotto:**
 ```bash
 cd koivulahti/infra
@@ -222,10 +254,73 @@ docker exec -i koivulahti-postgres-1 psql -U koivulahti -d koivulahti < ../migra
 ```
 
 **Jatkotyöt:**
+- ✅ Archetype mapping (catalog → appraisal)
+- ✅ POST_SEEN ketjureaktiot (vastaukset toisten postauksiin)
 - 🔲 Oikeat fetcherit (Open-Meteo, RSS)
-- 🔲 POST_SEEN ketjureaktiot (vastaukset toisten postauksiin)
 - 🔲 Paremmat few-shot esimerkit per NPC
 - 🔲 Rate limiting persistointi (nyt in-memory)
+
+### POST_SEEN Chain Reactions (2025-12-17 ilta)
+
+**Tavoite:** NPC:t reagoivat toistensa postauksiin → luontevat someketjut
+
+**Toteutetut komponentit:**
+
+1. ✅ **Spec & Dokumentaatio** (`docs/post-chain-reactions.md`)
+   - Event-tyypit: POST_PUBLISHED, POST_SEEN, POST_REPLIED
+   - Jakelumalli (hash-pohjainen determinismi)
+   - Reply-heuristiikat per archetype
+
+2. ✅ **Migraatio** (`migrations/004_post_chains.sql`)
+   - `posts.parent_post_id` - viittaus vanhempaan postaukseen
+   - `posts.reply_type` - vastaustyyppi (question, agree, blame, joke...)
+   - `post_deliveries` - NPC-kohtainen näkyvyysloki
+
+3. ✅ **Archetype Mapping Refactor** (`packages/shared/archetype_mapping.py`)
+   - Eriytetty omaan moduuliin (ei asyncpg-riippuvuutta)
+   - `ARCHETYPE_MAPPING`: 24 catalog → 7 appraisal
+   - `CATALOG_ARCHETYPES`: kanoninen lista
+   - `get_appraisal_archetype()`: logging tuntemattomille
+
+4. ✅ **Regressiotestit** (`tests/test_archetype_mapping.py`)
+   - 10 testiä: mapping kattavuus, validit targetit, fallback, case-insensitivity
+
+5. ✅ **Engine: Post Distribution** (`services/engine/app/runner.py`)
+   - `distribute_post_visibility()` - jakaa postit NPC:ille
+   - `should_see_post()` - näkyvyys (archetype + channel)
+   - `should_reply()` - vastauksen todennäköisyys
+   - `generate_reply_draft()` - template-pohjainen draft
+   - `REPLY_PROBABILITY`: gossip 60%, social 50%, stoic 5%
+   - `REPLY_TEMPLATES`: archetype-kohtaiset vastauspohjat
+   - RPUSH prioriteetti POST_SEEN jobeille
+
+6. ✅ **Worker: Reply Support** (`services/workers/app/worker.py`)
+   - POST_SEEN event handling `event_facts_fi()` ja `make_draft()`
+   - `persist_post()` tukee parent_post_id ja reply_type
+   - Job normalisointi (event_id → source_event_id)
+
+**Testitulokset:**
+```
+Engine: npc_aila -> REPLY (question) on post 911
+Engine: npc_kaisa -> REPLY (joke) on post 911
+Worker: stored evt_post_seen_911_npc_kaisa
+Worker: stored evt_post_seen_911_npc_aila
+
+Database:
+id=914 | npc_aila | parent_post_id=911 | reply_type=question
+id=913 | npc_kaisa | parent_post_id=911 | reply_type=joke
+```
+
+**Milestone status:**
+- ✅ AMBIENT_WEATHER → FEED posts
+- ✅ POST_SEEN triggered
+- ✅ Replies generated with correct archetypes
+- ⚠️ Reply text needs tuning (LLM ei käytä draftia optimaalisesti)
+
+**Jatkotyöt (POST_SEEN):**
+- 🔲 Parempi draft → final text mapping
+- 🔲 Reply depth rajoitus (max 3 tasoa)
+- 🔲 Relationship-pohjainen näkyvyys (friend/enemy)
 
 ---
 

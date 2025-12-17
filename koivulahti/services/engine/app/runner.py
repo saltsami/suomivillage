@@ -8,6 +8,11 @@ from typing import Any, Dict, List, Optional
 import asyncpg
 from redis.asyncio import Redis
 
+from packages.shared.archetype_mapping import (
+    ARCHETYPE_MAPPING,
+    APPRAISAL_ARCHETYPES,
+    get_appraisal_archetype,
+)
 from packages.shared.data_loader import (
     get_day1_seed_events,
     get_event_types,
@@ -500,6 +505,8 @@ APPRAISAL_MATRIX: Dict[str, Dict[str, tuple]] = {
         "anxious": ("POST_CHAT", "Liukasta on. Varokaa teillä!"),
         "stoic": ("IGNORE", None),
         "gossip": ("POST_CHAT", "Kuulin että lumimyrsky tulossa? Mitäs muut?"),
+        "social": ("POST_CHAT", "Lunta sataa! Kuka lähtee pulkkamäkeen?"),
+        "political": ("POST_FEED", "Taas lumityöt myöhässä. Kunnan pitäis hoitaa."),
         "default": ("POST_FEED", "Lunta sataa. Talvi täällä."),
     },
     "weather_rain": {
@@ -507,6 +514,9 @@ APPRAISAL_MATRIX: Dict[str, Dict[str, tuple]] = {
         "practical": ("POST_FEED", "Vesisadetta. Sateenvarjo mukaan."),
         "anxious": ("POST_CHAT", "Vettä tulee. Onkohan kaikilla kumisaappaat?"),
         "stoic": ("IGNORE", None),
+        "social": ("POST_CHAT", "Sataa! Tuleeko kukaan kahville sisälle?"),
+        "gossip": ("POST_CHAT", "Onpas kaatosadetta. Oliko kellään kastuneet vaatteet?"),
+        "political": ("POST_FEED", "Taas sataa. Ilmastonmuutos tekee tehtävänsä."),
         "default": ("POST_FEED", "Sataa vettä. Normaali päivä."),
     },
     "weather_sunny": {
@@ -570,11 +580,10 @@ def should_deliver_ambient(ambient_id: str, npc_id: str, visibility_pct: int = D
 
 
 def get_npc_archetype(npc_profile: Dict[str, Any]) -> str:
-    """Extract primary archetype from NPC profile."""
+    """Extract primary archetype from NPC profile and map to appraisal archetype."""
     archetypes = npc_profile.get("archetypes", [])
-    if archetypes:
-        return archetypes[0].lower()
-    return "default"
+    npc_id = npc_profile.get("id", "?")
+    return get_appraisal_archetype(archetypes, npc_id)
 
 
 def appraise_ambient(topic: str, npc_profile: Dict[str, Any]) -> tuple:
@@ -881,6 +890,286 @@ async def generate_routine_event(
     }
 
 
+# =============================================================================
+# POST CHAIN REACTIONS
+# =============================================================================
+
+# Reply probability by archetype (base chance to reply when seeing a post)
+REPLY_PROBABILITY: Dict[str, float] = {
+    "gossip": 0.60,
+    "social": 0.50,
+    "political": 0.40,
+    "anxious": 0.35,
+    "romantic": 0.30,
+    "practical": 0.20,
+    "stoic": 0.05,
+    "default": 0.15,
+}
+
+# Reply templates by archetype and type
+REPLY_TEMPLATES: Dict[str, Dict[str, list]] = {
+    "gossip": {
+        "question": ["Kuulin kanssa... Tiedätkö lisää?", "Mitäs muut on mieltä?", "Onko tämä varmaa?"],
+        "spread": ["Joo tämähän on juttu!", "Pitääpä kertoa muillekin.", "No nyt!"],
+    },
+    "social": {
+        "invite": ["Mäkin tuun!", "Lähdetäänkö yhdessä?", "Ketä muita tulee?"],
+        "joke": ["Haha klassikko!", "No jopas!", "Tämä on hyvä!"],
+    },
+    "political": {
+        "blame": ["Tämäkin on kunnan vika.", "Taas sama meno.", "Kuka tästä vastaa?"],
+        "solution": ["Pitäisi tehdä jotain.", "Meidän pitäis puhua tästä porukalla."],
+    },
+    "anxious": {
+        "worry": ["Toivottavasti ei käy huonosti...", "Olkaa varovaisia!", "Tästä voi tulla ongelma."],
+    },
+    "romantic": {
+        "agree": ["Niin kaunista!", "Täysin samaa mieltä.", "Ihana ajatus."],
+    },
+    "practical": {
+        "solution": ["Kannattaa varautua.", "Näin se menee.", "Asia selvä."],
+    },
+    "stoic": {
+        "neutral": ["Joo.", "Niin.", "Katsotaan."],
+    },
+    "default": {
+        "neutral": ["Joo näin on.", "Katsotaan.", "No niin."],
+    },
+}
+
+
+def should_see_post(post_id: int, npc_id: str, author_id: str, archetype: str, channel: str) -> bool:
+    """Deterministic check if NPC should see this post."""
+    # Never see your own posts
+    if npc_id == author_id:
+        return False
+
+    # Base visibility
+    base = 0.40
+
+    # Channel modifier (CHAT is more targeted)
+    if channel == "CHAT":
+        base += 0.15
+
+    # Archetype modifier (gossip/social see more)
+    if archetype in ["gossip", "social"]:
+        base += 0.20
+    elif archetype == "stoic":
+        base -= 0.15
+
+    # Deterministic hash check
+    h = hashlib.sha256(f"{post_id}:{npc_id}".encode()).hexdigest()
+    return (int(h[:8], 16) % 100) < (base * 100)
+
+
+def should_reply(post_id: int, npc_id: str, archetype: str) -> bool:
+    """Deterministic check if NPC should reply to this post."""
+    prob = REPLY_PROBABILITY.get(archetype, REPLY_PROBABILITY["default"])
+
+    # Deterministic hash check
+    h = hashlib.sha256(f"reply:{post_id}:{npc_id}".encode()).hexdigest()
+    return (int(h[:8], 16) % 100) < (prob * 100)
+
+
+def generate_reply_draft(archetype: str, post_id: int, npc_id: str) -> tuple:
+    """Generate a reply draft based on archetype. Returns (reply_type, draft)."""
+    templates = REPLY_TEMPLATES.get(archetype, REPLY_TEMPLATES["default"])
+
+    # Deterministic selection using hash
+    h = hashlib.sha256(f"draft:{post_id}:{npc_id}".encode()).hexdigest()
+    seed = int(h[:8], 16)
+
+    reply_types = list(templates.keys())
+    reply_type = reply_types[seed % len(reply_types)]
+
+    options = templates[reply_type]
+    draft = options[seed % len(options)]
+
+    return reply_type, draft
+
+
+async def fetch_undelivered_posts(conn, max_age_hours: int = 2) -> list:
+    """Fetch posts that haven't been fully distributed yet."""
+    return await conn.fetch(
+        """
+        SELECT p.id, p.author_id, p.channel, p.text, p.created_at, p.parent_post_id
+        FROM posts p
+        WHERE p.created_at > NOW() - make_interval(hours => $1)
+          AND p.parent_post_id IS NULL  -- Only original posts, not replies
+          AND NOT EXISTS (
+              SELECT 1 FROM post_deliveries pd
+              WHERE pd.post_id = p.id
+              LIMIT 1
+          )
+        ORDER BY p.created_at ASC
+        LIMIT 10
+        """,
+        max_age_hours,
+    )
+
+
+async def record_post_delivery(conn, post_id: int, npc_id: str, replied: bool = False) -> None:
+    """Record that an NPC has seen a post."""
+    await conn.execute(
+        """
+        INSERT INTO post_deliveries (post_id, npc_id, replied)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (post_id, npc_id) DO UPDATE SET replied = EXCLUDED.replied OR post_deliveries.replied
+        """,
+        post_id,
+        npc_id,
+        replied,
+    )
+
+
+async def get_reply_depth(conn, post_id: int) -> int:
+    """Get depth of reply chain (0 for original posts)."""
+    depth = 0
+    current_id = post_id
+    while current_id:
+        row = await conn.fetchrow(
+            "SELECT parent_post_id FROM posts WHERE id = $1", current_id
+        )
+        if not row or not row["parent_post_id"]:
+            break
+        current_id = row["parent_post_id"]
+        depth += 1
+        if depth > 5:  # Safety limit
+            break
+    return depth
+
+
+async def distribute_post_visibility(sim_ts: datetime) -> int:
+    """
+    Distribute posts to NPCs and generate reply reactions.
+    Returns count of reply jobs enqueued.
+    """
+    assert db_pool is not None
+    assert redis_client is not None
+
+    npcs = get_npc_profiles()
+    if not npcs:
+        return 0
+
+    jobs_enqueued = 0
+
+    async with db_pool.acquire() as conn:
+        posts = await fetch_undelivered_posts(conn)
+        if not posts:
+            return 0
+
+        for post in posts:
+            post_id = post["id"]
+            author_id = post["author_id"]
+            channel = post["channel"]
+            text = post["text"]
+
+            # Check reply depth - limit to 3 levels
+            depth = await get_reply_depth(conn, post_id)
+            if depth >= 3:
+                # Mark as delivered but don't generate replies
+                for npc in npcs:
+                    await record_post_delivery(conn, post_id, npc.id, False)
+                continue
+
+            for npc in npcs:
+                npc_id = npc.id
+
+                # Get NPC profile
+                profile_row = await conn.fetchrow(
+                    "SELECT profile FROM npc_profiles WHERE npc_id=$1", npc_id
+                )
+                npc_profile = {}
+                if profile_row:
+                    prof = profile_row["profile"]
+                    npc_profile = json.loads(prof) if isinstance(prof, str) else prof
+
+                archetype = get_npc_archetype(npc_profile)
+
+                # Check if should see post
+                if not should_see_post(post_id, npc_id, author_id, archetype, channel):
+                    await record_post_delivery(conn, post_id, npc_id, False)
+                    continue
+
+                # Check if should reply
+                if not should_reply(post_id, npc_id, archetype):
+                    await record_post_delivery(conn, post_id, npc_id, False)
+                    continue
+
+                # Check cooldown
+                now = datetime.now(tz=timezone.utc)
+                if not check_cooldown(npc_id, channel, now):
+                    await record_post_delivery(conn, post_id, npc_id, False)
+                    continue
+
+                # Generate reply draft
+                reply_type, draft = generate_reply_draft(archetype, post_id, npc_id)
+
+                # Create POST_SEEN event
+                event_id = f"evt_post_seen_{post_id}_{npc_id}"
+
+                event = {
+                    "id": event_id,
+                    "type": "POST_SEEN",
+                    "place_id": None,
+                    "actors": [npc_id],
+                    "targets": [author_id],
+                    "publicness": 0.3,
+                    "severity": 0.2,
+                    "ts_local": sim_ts.isoformat(),
+                    "payload": {
+                        "post_id": post_id,
+                        "author_id": author_id,
+                        "channel": channel,
+                        "original_text": text[:200],
+                        "viewer_archetype": archetype,
+                        "reply_type": reply_type,
+                        "draft": draft,
+                        "parent_post_id": post_id,
+                    },
+                }
+
+                # Insert event
+                await conn.execute(
+                    """
+                    INSERT INTO events (id, sim_ts, place_id, type, actors, targets, publicness, severity, payload)
+                    VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9::jsonb)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    event_id,
+                    sim_ts,
+                    None,
+                    "POST_SEEN",
+                    json.dumps([npc_id]),
+                    json.dumps([author_id]),
+                    0.3,
+                    0.2,
+                    json.dumps(event["payload"]),
+                )
+
+                # Enqueue render job (RPUSH for priority - gets processed before routine jobs)
+                job = {
+                    "event_id": event_id,
+                    "author_id": npc_id,
+                    "channel": channel,
+                    "draft": draft,
+                    "reply_type": reply_type,
+                    "parent_post_id": post_id,
+                }
+                await redis_client.rpush(settings.render_queue, json.dumps(job))
+
+                # Record delivery with reply flag
+                await record_post_delivery(conn, post_id, npc_id, True)
+
+                # Update cooldown
+                update_cooldown(npc_id, channel, now)
+
+                print(f"[engine] post reaction: {npc_id} -> REPLY ({reply_type}) on post {post_id}")
+                jobs_enqueued += 1
+
+    return jobs_enqueued
+
+
 async def tick_once(
     sim_ts: datetime,
     tick_index: int,
@@ -911,6 +1200,17 @@ async def tick_once(
             # Don't crash the tick loop if ambient tables don't exist yet
             if "ambient_events" not in str(e):
                 print(f"[engine] ambient distribution error: {e}")
+
+    # Distribute post visibility every 20 ticks (~20 seconds)
+    if tick_index > 0 and tick_index % 20 == 0:
+        try:
+            post_jobs = await distribute_post_visibility(sim_ts)
+            if post_jobs > 0:
+                print(f"[engine] distributed post visibility, enqueued {post_jobs} replies")
+        except Exception as e:
+            # Don't crash the tick loop if post tables don't exist yet
+            if "post_deliveries" not in str(e):
+                print(f"[engine] post distribution error: {e}")
 
     if tick_index % 60 == 0:
         print(f"[engine] tick {tick_index} sim_ts={sim_ts.isoformat()}")

@@ -105,6 +105,16 @@ def event_facts_fi(event: dict) -> str:
             parts.append(f"faktat=[{', '.join(facts[:2])}]")
         return ", ".join(parts) if parts else "ambient_event"
 
+    # Handle POST_SEEN events (replies)
+    if t == "POST_SEEN":
+        original_text = payload.get("original_text", "")[:60]
+        author_id = payload.get("author_id", "").replace("npc_", "").capitalize()
+        reply_type = payload.get("reply_type", "neutral")
+        parts.append(f"vastaus_tyyppi={reply_type}")
+        parts.append(f"alkuperäinen_kirjoittaja={author_id}")
+        parts.append(f"alkuperäinen_teksti={original_text}")
+        return ", ".join(parts) if parts else "post_reply"
+
     # Regular events
     if place and place != "kylä":
         parts.append(f"paikka={place}")
@@ -293,6 +303,28 @@ def make_draft(channel: str, event: Dict[str, Any], author_id: str, prompt_conte
             opts = [f"{summary[:50]}"]
         return r.choice(opts).strip()
 
+    # --- POST_SEEN (reply to another post) ---
+    elif event_type == "POST_SEEN":
+        # Use draft from engine if provided, otherwise generate fallback
+        if "draft" in payload and payload["draft"]:
+            return payload["draft"]
+        reply_type = payload.get("reply_type", "neutral")
+        original_author = payload.get("author_id", "").replace("npc_", "").capitalize()
+        original_text = payload.get("original_text", "")[:50]
+        if reply_type == "question":
+            opts = [f"@{original_author} Kerro lisää!", f"@{original_author} Mitä tarkoitat?"]
+        elif reply_type in ["agree", "neutral"]:
+            opts = [f"@{original_author} Niin on!", f"@{original_author} Jep."]
+        elif reply_type in ["blame", "solution"]:
+            opts = [f"@{original_author} Totta. Pitäisi tehdä jotain.", f"@{original_author} Sama mieltä."]
+        elif reply_type == "worry":
+            opts = [f"@{original_author} Huolestuttavaa.", f"@{original_author} Toivottavasti menee hyvin."]
+        elif reply_type in ["invite", "joke"]:
+            opts = [f"@{original_author} Mäkin tuun!", f"@{original_author} Haha!"]
+        else:
+            opts = [f"@{original_author} Joo.", f"@{original_author} Näin on."]
+        return r.choice(opts).strip()
+
     # --- Fallback ---
     else:
         if channel == "FEED":
@@ -378,8 +410,8 @@ async def persist_post(data: Dict[str, Any]) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO posts (channel, author_id, source_event_id, tone, text, tags, safety_notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO posts (channel, author_id, source_event_id, tone, text, tags, safety_notes, parent_post_id, reply_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
             data["channel"],
             data["author_id"],
@@ -388,6 +420,8 @@ async def persist_post(data: Dict[str, Any]) -> None:
             data["text"],
             json.dumps(data.get("tags", [])),
             data.get("safety_notes"),
+            data.get("parent_post_id"),  # NULL for non-replies
+            data.get("reply_type"),  # NULL for non-replies
         )
 
 
@@ -397,8 +431,12 @@ async def process_once() -> None:
     # Debug logging for author_id tracking
     job_author = job.get("author_id", "MISSING")
     job_channel = job.get("channel", "UNKNOWN")
-    job_event = job.get("source_event_id", "UNKNOWN")
+    job_event = job.get("source_event_id", job.get("event_id", "UNKNOWN"))
     print(f"[worker] processing: author={job_author}, channel={job_channel}, event={job_event}")
+
+    # Normalize event_id to source_event_id (engine uses event_id for POST_SEEN jobs)
+    if "event_id" in job and "source_event_id" not in job:
+        job["source_event_id"] = job["event_id"]
 
     generated = await call_gateway(job)
 
@@ -406,6 +444,12 @@ async def process_once() -> None:
     gen_author = generated.get("author_id", "MISSING")
     if job_author != gen_author:
         print(f"[worker] WARNING: author_id mismatch! job={job_author} vs generated={gen_author}")
+
+    # Merge reply fields from job (gateway doesn't know about these)
+    if job.get("parent_post_id"):
+        generated["parent_post_id"] = job["parent_post_id"]
+    if job.get("reply_type"):
+        generated["reply_type"] = job["reply_type"]
 
     await persist_post(generated)
     print(f"[worker] stored: author={gen_author}, event={generated['source_event_id']}")
