@@ -130,3 +130,110 @@ class EventTypeItem(BaseModel):
 
     class Config:
         extra = "allow"
+
+
+# --- Decision Service Schemas ---
+
+
+class MemorySummary(BaseModel):
+    """A memory relevant to decision-making."""
+    event_id: str
+    summary: Optional[str] = None
+    importance: float = 0.1
+    created_at: datetime
+    event_type: Optional[str] = None
+
+
+class RelationshipSummary(BaseModel):
+    """Relationship data for decision context."""
+    npc_id: str
+    name: str
+    trust: int = 0
+    respect: int = 0
+    affection: int = 0
+    jealousy: int = 0
+    fear: int = 0
+    grievances: List[str] = Field(default_factory=list)
+
+
+class GoalSummary(BaseModel):
+    """Active goal for decision context."""
+    goal_type: str
+    description: Optional[str] = None
+    priority: float = 0.5
+    horizon: str = "short"  # short | long
+
+
+class Stimulus(BaseModel):
+    """The event/trigger that NPC is reacting to."""
+    event_id: str
+    event_type: str  # AMBIENT_SEEN, POST_SEEN, ROUTINE, etc.
+    payload: Dict[str, Any] = Field(default_factory=dict)
+    actors: List[str] = Field(default_factory=list)
+    targets: List[str] = Field(default_factory=list)
+    # For POST_SEEN
+    original_text: Optional[str] = None
+    original_author: Optional[str] = None
+    # For AMBIENT_SEEN
+    topic: Optional[str] = None
+    summary_fi: Optional[str] = None
+
+
+class DecisionContext(BaseModel):
+    """Full context for NPC decision-making."""
+    # NPC identity
+    npc_id: str
+    name: str
+    role: str
+    archetypes: List[str] = Field(default_factory=list)
+    bio: Optional[str] = None
+    traits: Dict[str, float] = Field(default_factory=dict)
+    values: Dict[str, float] = Field(default_factory=dict)
+    voice: Dict[str, Any] = Field(default_factory=dict)
+
+    # Memories
+    recent_memories: List[MemorySummary] = Field(default_factory=list)
+    important_memories: List[MemorySummary] = Field(default_factory=list)
+    related_memories: List[MemorySummary] = Field(default_factory=list)
+
+    # Relationships with involved actors
+    relationships: Dict[str, RelationshipSummary] = Field(default_factory=dict)
+
+    # Active goals
+    active_goals: List[GoalSummary] = Field(default_factory=list)
+
+    # The stimulus to react to
+    stimulus: Stimulus
+
+
+class DecisionResult(BaseModel):
+    """Output from Decision LLM."""
+    action: str  # IGNORE, POST_FEED, POST_CHAT, REPLY
+    intent: str = "neutral"  # spread_info, agree, disagree, joke, worry, practical, emotional
+    emotion: str = "neutral"  # curious, happy, annoyed, worried, neutral, amused
+    draft: str = ""  # English draft of what to say
+    reasoning: str = ""  # Why this decision
+    confidence: float = 0.5  # 0-1
+    target_channel: Optional[str] = None  # FEED, CHAT
+    target_actor: Optional[str] = None  # For REPLY
+
+
+class DecisionJob(BaseModel):
+    """Job sent from Engine to Decision Service."""
+    job_id: str
+    npc_id: str
+    stimulus: Stimulus
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class RenderJobV2(BaseModel):
+    """Job sent from Decision Service to Worker."""
+    job_id: str
+    decision_job_id: str
+    author_id: str
+    channel: str  # FEED, CHAT, NEWS
+    source_event_id: str
+    decision: DecisionResult
+    # For replies
+    parent_post_id: Optional[int] = None
+    reply_type: Optional[str] = None

@@ -4,6 +4,7 @@ import json
 import random
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 import asyncpg
 from redis.asyncio import Redis
@@ -370,6 +371,49 @@ async def enqueue_render_jobs(
             },
         }
         await redis_client.lpush(settings.render_queue, json.dumps(job))
+
+
+async def enqueue_decision_job(
+    npc_id: str,
+    event: Dict[str, Any],
+    sim_ts: datetime,
+) -> str:
+    """
+    Enqueue a decision job to the Decision Service.
+    Returns the job_id.
+    """
+    assert redis_client is not None
+
+    job_id = f"decision_{uuid4().hex[:8]}"
+    payload = event.get("payload", {})
+
+    # Build stimulus from event
+    stimulus = {
+        "event_id": event["id"],
+        "event_type": event["type"],
+        "payload": payload,
+        "actors": event.get("actors", []),
+        "targets": event.get("targets", []),
+    }
+
+    # Add type-specific fields
+    if event["type"] == "POST_SEEN":
+        stimulus["original_text"] = payload.get("original_text", "")
+        stimulus["original_author"] = payload.get("author_id", "")
+        stimulus["channel"] = payload.get("channel", "CHAT")
+    elif event["type"] == "AMBIENT_SEEN":
+        stimulus["topic"] = payload.get("topic", "")
+        stimulus["summary_fi"] = payload.get("summary_fi", "")
+
+    job = {
+        "job_id": job_id,
+        "npc_id": npc_id,
+        "stimulus": stimulus,
+        "created_at": sim_ts.isoformat(),
+    }
+
+    await redis_client.lpush(settings.decision_queue, json.dumps(job))
+    return job_id
 
 
 async def process_event(
@@ -754,51 +798,52 @@ async def distribute_ambient_events(sim_ts: datetime) -> int:
                 # Create AMBIENT_SEEN event
                 seen_event = await create_ambient_seen_event(conn, ae, npc_id, sim_ts)
 
-                # Get NPC profile for appraisal
-                profile_row = await conn.fetchrow(
-                    "SELECT profile FROM npc_profiles WHERE npc_id=$1", npc_id
-                )
-                npc_profile = {}
-                if profile_row:
-                    prof = profile_row["profile"]
-                    npc_profile = json.loads(prof) if isinstance(prof, str) else prof
-
-                # Appraise: determine intent based on topic + personality
-                intent, draft = appraise_ambient(topic, npc_profile)
-
                 # Record delivery
                 await record_delivery(conn, ambient_id, npc_id)
 
-                # Skip if NPC decides to ignore
-                if intent == "IGNORE" or not draft:
-                    continue
+                # Enqueue decision job - let Decision Service decide what to do
+                if settings.decision_service_enabled:
+                    job_id = await enqueue_decision_job(npc_id, seen_event, sim_ts)
+                    jobs_enqueued += 1
+                    print(f"[engine] ambient decision: {npc_id} -> decision_job {job_id} on {topic}")
+                else:
+                    # Fallback: old behavior (appraise locally)
+                    profile_row = await conn.fetchrow(
+                        "SELECT profile FROM npc_profiles WHERE npc_id=$1", npc_id
+                    )
+                    npc_profile = {}
+                    if profile_row:
+                        prof = profile_row["profile"]
+                        npc_profile = json.loads(prof) if isinstance(prof, str) else prof
 
-                # Map intent to channel
-                channel = "FEED" if intent == "POST_FEED" else "CHAT"
+                    intent, draft = appraise_ambient(topic, npc_profile)
 
-                # Check cooldown
-                if not check_cooldown(npc_id, channel, sim_ts):
-                    continue
+                    if intent == "IGNORE" or not draft:
+                        continue
 
-                # Enqueue render job
-                job = {
-                    "channel": channel,
-                    "author_id": npc_id,
-                    "source_event_id": seen_event["id"],
-                    "prompt_context": {
-                        "summary": f"Reaction to {topic}: {payload.get('summary_fi', '')}",
-                        "event": seen_event,
-                        "ambient_topic": topic,
-                        "ambient_payload": payload,
-                        "draft": draft,
-                        "impact": ae["intensity"],
-                        "sim_ts": sim_ts.isoformat(),
-                    },
-                }
-                await redis_client.lpush(settings.render_queue, json.dumps(job))
-                update_cooldown(npc_id, channel, sim_ts)
-                jobs_enqueued += 1
-                print(f"[engine] ambient reaction: {npc_id} -> {intent} on {topic}")
+                    channel = "FEED" if intent == "POST_FEED" else "CHAT"
+
+                    if not check_cooldown(npc_id, channel, sim_ts):
+                        continue
+
+                    job = {
+                        "channel": channel,
+                        "author_id": npc_id,
+                        "source_event_id": seen_event["id"],
+                        "prompt_context": {
+                            "summary": f"Reaction to {topic}: {payload.get('summary_fi', '')}",
+                            "event": seen_event,
+                            "ambient_topic": topic,
+                            "ambient_payload": payload,
+                            "draft": draft,
+                            "impact": ae["intensity"],
+                            "sim_ts": sim_ts.isoformat(),
+                        },
+                    }
+                    await redis_client.lpush(settings.render_queue, json.dumps(job))
+                    update_cooldown(npc_id, channel, sim_ts)
+                    jobs_enqueued += 1
+                    print(f"[engine] ambient reaction: {npc_id} -> {intent} on {topic}")
 
     return jobs_enqueued
 
@@ -1075,35 +1120,17 @@ async def distribute_post_visibility(sim_ts: datetime) -> int:
             for npc in npcs:
                 npc_id = npc.id
 
-                # Get NPC profile
-                profile_row = await conn.fetchrow(
-                    "SELECT profile FROM npc_profiles WHERE npc_id=$1", npc_id
-                )
-                npc_profile = {}
-                if profile_row:
-                    prof = profile_row["profile"]
-                    npc_profile = json.loads(prof) if isinstance(prof, str) else prof
-
-                archetype = get_npc_archetype(npc_profile)
-
-                # Check if should see post
-                if not should_see_post(post_id, npc_id, author_id, archetype, channel):
+                # Skip own posts
+                if npc_id == author_id:
                     await record_post_delivery(conn, post_id, npc_id, False)
                     continue
 
-                # Check if should reply
-                if not should_reply(post_id, npc_id, archetype):
+                # Deterministic visibility check (keep simple hash-based filtering)
+                h = hashlib.sha256(f"{post_id}:{npc_id}".encode()).hexdigest()
+                base_visibility = 0.50  # 50% see any post
+                if (int(h[:8], 16) % 100) >= (base_visibility * 100):
                     await record_post_delivery(conn, post_id, npc_id, False)
                     continue
-
-                # Check cooldown
-                now = datetime.now(tz=timezone.utc)
-                if not check_cooldown(npc_id, channel, now):
-                    await record_post_delivery(conn, post_id, npc_id, False)
-                    continue
-
-                # Generate reply draft
-                reply_type, draft = generate_reply_draft(archetype, post_id, npc_id)
 
                 # Create POST_SEEN event
                 event_id = f"evt_post_seen_{post_id}_{npc_id}"
@@ -1122,9 +1149,6 @@ async def distribute_post_visibility(sim_ts: datetime) -> int:
                         "author_id": author_id,
                         "channel": channel,
                         "original_text": text[:200],
-                        "viewer_archetype": archetype,
-                        "reply_type": reply_type,
-                        "draft": draft,
                         "parent_post_id": post_id,
                     },
                 }
@@ -1147,25 +1171,47 @@ async def distribute_post_visibility(sim_ts: datetime) -> int:
                     json.dumps(event["payload"]),
                 )
 
-                # Enqueue render job (RPUSH for priority - gets processed before routine jobs)
-                job = {
-                    "event_id": event_id,
-                    "author_id": npc_id,
-                    "channel": channel,
-                    "draft": draft,
-                    "reply_type": reply_type,
-                    "parent_post_id": post_id,
-                }
-                await redis_client.rpush(settings.render_queue, json.dumps(job))
+                # Record delivery
+                await record_post_delivery(conn, post_id, npc_id, False)
 
-                # Record delivery with reply flag
-                await record_post_delivery(conn, post_id, npc_id, True)
+                # Enqueue decision job - let Decision Service decide whether to reply
+                if settings.decision_service_enabled:
+                    job_id = await enqueue_decision_job(npc_id, event, sim_ts)
+                    jobs_enqueued += 1
+                    print(f"[engine] post decision: {npc_id} -> decision_job {job_id} on post {post_id}")
+                else:
+                    # Fallback: old behavior
+                    profile_row = await conn.fetchrow(
+                        "SELECT profile FROM npc_profiles WHERE npc_id=$1", npc_id
+                    )
+                    npc_profile = {}
+                    if profile_row:
+                        prof = profile_row["profile"]
+                        npc_profile = json.loads(prof) if isinstance(prof, str) else prof
 
-                # Update cooldown
-                update_cooldown(npc_id, channel, now)
+                    archetype = get_npc_archetype(npc_profile)
 
-                print(f"[engine] post reaction: {npc_id} -> REPLY ({reply_type}) on post {post_id}")
-                jobs_enqueued += 1
+                    if not should_reply(post_id, npc_id, archetype):
+                        continue
+
+                    now = datetime.now(tz=timezone.utc)
+                    if not check_cooldown(npc_id, channel, now):
+                        continue
+
+                    reply_type, draft = generate_reply_draft(archetype, post_id, npc_id)
+
+                    job = {
+                        "event_id": event_id,
+                        "author_id": npc_id,
+                        "channel": channel,
+                        "draft": draft,
+                        "reply_type": reply_type,
+                        "parent_post_id": post_id,
+                    }
+                    await redis_client.rpush(settings.render_queue, json.dumps(job))
+                    update_cooldown(npc_id, channel, now)
+                    jobs_enqueued += 1
+                    print(f"[engine] post reaction: {npc_id} -> REPLY ({reply_type}) on post {post_id}")
 
     return jobs_enqueued
 
@@ -1184,11 +1230,22 @@ async def tick_once(
                 routine_event, event_types
             )
             if inserted:
-                await enqueue_render_jobs(routine_event, event_sim_ts, impact, event_type)
-                print(
-                    f"[engine] injected {routine_event['id']} "
-                    f"({routine_event['type']}) impact={impact:.2f}"
-                )
+                # Get the actor NPC for decision
+                actors = routine_event.get("actors", [])
+                if actors and settings.decision_service_enabled:
+                    npc_id = actors[0]
+                    job_id = await enqueue_decision_job(npc_id, routine_event, event_sim_ts)
+                    print(
+                        f"[engine] routine decision: {routine_event['id']} "
+                        f"({routine_event['type']}) -> decision_job {job_id}"
+                    )
+                else:
+                    # Fallback: old behavior (direct render)
+                    await enqueue_render_jobs(routine_event, event_sim_ts, impact, event_type)
+                    print(
+                        f"[engine] injected {routine_event['id']} "
+                        f"({routine_event['type']}) impact={impact:.2f}"
+                    )
 
     # Distribute ambient events every 30 ticks (~30 seconds)
     if tick_index > 0 and tick_index % 30 == 0:

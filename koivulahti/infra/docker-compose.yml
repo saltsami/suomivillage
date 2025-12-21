@@ -117,11 +117,29 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
       RENDER_QUEUE: ${RENDER_QUEUE}
+      DECISION_QUEUE: ${DECISION_QUEUE}
+      DECISION_SERVICE_ENABLED: ${DECISION_SERVICE_ENABLED}
       SIM_SEED: ${SIM_SEED}
       SIM_TICK_MS: ${SIM_TICK_MS}
       IMPACT_THRESHOLD_FEED: ${IMPACT_THRESHOLD_FEED}
       IMPACT_THRESHOLD_CHAT: ${IMPACT_THRESHOLD_CHAT}
       IMPACT_THRESHOLD_NEWS: ${IMPACT_THRESHOLD_NEWS}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  decision-service:
+    build:
+      context: ..
+      dockerfile: services/decision_service/Dockerfile
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      DECISION_QUEUE: ${DECISION_QUEUE}
+      RENDER_QUEUE: ${RENDER_QUEUE}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
     depends_on:
       postgres:
         condition: service_healthy
@@ -138,6 +156,7 @@ services:
       REDIS_URL: ${REDIS_URL}
       RENDER_QUEUE: ${RENDER_QUEUE}
       LLM_GATEWAY_URL: ${LLM_GATEWAY_URL}
+      DECISION_SERVICE_ENABLED: ${DECISION_SERVICE_ENABLED}
     depends_on:
       postgres:
         condition: service_healthy

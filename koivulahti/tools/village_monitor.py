@@ -115,6 +115,7 @@ def get_services_status() -> dict:
     # Docker containers (for non-HTTP services)
     containers = {
         "engine": "koivulahti-engine",
+        "decision": "koivulahti-decision-service",
         "workers": "koivulahti-workers",
         "redis": "koivulahti-redis",
         "db": "koivulahti-postgres",
@@ -149,6 +150,39 @@ def fetch_recent_events(
         params.append(type_filter)
 
     query += " ORDER BY ts DESC LIMIT %s"
+    params.append(limit)
+
+    with conn.cursor() as cur:
+        cur.execute(query, params)
+        return cur.fetchall()
+
+
+def fetch_recent_decisions(
+    conn,
+    limit: int = 10,
+    npc_filter: Optional[str] = None,
+    action_filter: Optional[str] = None,
+) -> list:
+    """Fetch recent decisions from database."""
+    query = """
+        SELECT job_id, npc_id, stimulus_type, action, intent, emotion,
+               llm_output->>'draft' as draft,
+               llm_output->>'reasoning' as reasoning,
+               latency_ms, error, processed_at
+        FROM decisions
+        WHERE 1=1
+    """
+    params = []
+
+    if npc_filter:
+        query += " AND npc_id = %s"
+        params.append(npc_filter)
+
+    if action_filter:
+        query += " AND action = %s"
+        params.append(action_filter)
+
+    query += " ORDER BY processed_at DESC LIMIT %s"
     params.append(limit)
 
     with conn.cursor() as cur:
@@ -201,9 +235,30 @@ def fetch_stats(conn) -> dict:
         cur.execute("SELECT MAX(ts) FROM events")
         latest_real_ts = cur.fetchone()[0]
 
+        # Decision stats
+        cur.execute("SELECT COUNT(*) FROM decisions")
+        decision_count = cur.fetchone()[0]
+
+        cur.execute("""
+            SELECT
+                COUNT(*) FILTER (WHERE action != 'IGNORE') as active,
+                AVG(latency_ms) FILTER (WHERE latency_ms > 0) as avg_latency,
+                COUNT(*) FILTER (WHERE error IS NOT NULL) as errors
+            FROM decisions
+            WHERE processed_at > NOW() - INTERVAL '5 minutes'
+        """)
+        row = cur.fetchone()
+        recent_active = row[0] or 0
+        avg_latency = row[1] or 0
+        recent_errors = row[2] or 0
+
         return {
             "events": event_count,
             "posts": post_count,
+            "decisions": decision_count,
+            "recent_active": recent_active,
+            "avg_latency": int(avg_latency),
+            "recent_errors": recent_errors,
             "sim_ts": latest_sim_ts,
             "real_ts": latest_real_ts,
         }
@@ -282,6 +337,64 @@ def create_posts_table(posts: list) -> Table:
     return table
 
 
+# Decision action colors
+ACTION_COLORS = {
+    "IGNORE": "dim",
+    "POST_FEED": "bright_blue",
+    "POST_CHAT": "bright_cyan",
+    "REPLY": "bright_green",
+}
+
+EMOTION_EMOJI = {
+    "curious": "🤔",
+    "happy": "😊",
+    "annoyed": "😤",
+    "worried": "😟",
+    "neutral": "😐",
+    "amused": "😄",
+    "proud": "😎",
+    "sad": "😢",
+}
+
+
+def create_decisions_table(decisions: list, show_all: bool = False) -> Table:
+    """Create a Rich table for decisions."""
+    table = Table(title="Gemini Decisions (5min)", box=None, expand=True)
+    table.add_column("Who", width=7)
+    table.add_column("Stimulus", width=12)
+    table.add_column("Action", width=9)
+    table.add_column("Emo", width=3)
+    table.add_column("Draft", no_wrap=False)
+    table.add_column("ms", width=5, justify="right")
+
+    for dec in decisions:
+        (job_id, npc_id, stimulus_type, action, intent, emotion,
+         draft, reasoning, latency_ms, error, processed_at) = dec
+
+        # Skip IGNORE unless show_all
+        if not show_all and action == "IGNORE":
+            continue
+
+        action_color = ACTION_COLORS.get(action, "white")
+        emo = EMOTION_EMOJI.get(emotion, "")
+
+        # Format latency
+        lat_str = str(latency_ms) if latency_ms else "-"
+        if error:
+            lat_str = Text("ERR", style="red")
+
+        table.add_row(
+            npc_id.replace("npc_", "") if npc_id else "-",
+            truncate(stimulus_type or "", 12),
+            Text(action, style=action_color),
+            emo,
+            truncate(draft or "", 40),
+            lat_str if isinstance(lat_str, Text) else lat_str,
+        )
+
+    return table
+
+
 def create_stats_panel(stats: dict, services: dict) -> Panel:
     """Create a stats panel with service status."""
     sim_time = format_time(stats["sim_ts"]) if stats["sim_ts"] else "-"
@@ -289,7 +402,7 @@ def create_stats_panel(stats: dict, services: dict) -> Panel:
 
     # Format service status
     svc_parts = []
-    svc_order = ["db", "redis", "llm", "gateway", "api", "engine", "workers"]
+    svc_order = ["db", "redis", "llm", "gateway", "api", "engine", "decision", "workers"]
     for name in svc_order:
         if name in services:
             svc = services[name]
@@ -302,11 +415,21 @@ def create_stats_panel(stats: dict, services: dict) -> Panel:
 
     svc_line = " ".join(svc_parts)
 
+    # Decision stats
+    dec_active = stats.get("recent_active", 0)
+    dec_latency = stats.get("avg_latency", 0)
+    dec_errors = stats.get("recent_errors", 0)
+    dec_color = "green" if dec_errors == 0 else "red"
+
     content = (
         f"[bold]Events:[/] {stats['events']}  "
         f"[bold]Posts:[/] {stats['posts']}  "
+        f"[bold]Decisions:[/] {stats.get('decisions', 0)}  "
         f"[bold]Sim:[/] {sim_time}  "
         f"[bold]Real:[/] {real_time}\n"
+        f"[bold]Gemini 5min:[/] [{dec_color}]{dec_active} active[/] | "
+        f"~{dec_latency}ms | "
+        f"{'[red]' + str(dec_errors) + ' errors[/]' if dec_errors else '[green]no errors[/]'}  "
         f"{svc_line}"
     )
     return Panel(content, title="[bold cyan]KOIVULAHTI[/]", border_style="cyan")
@@ -322,6 +445,12 @@ def create_display(conn, args) -> Layout:
         npc_filter=args.npc,
         type_filter=args.type,
     )
+    decisions = fetch_recent_decisions(
+        conn,
+        limit=args.limit * 2,  # More decisions since we filter IGNORE
+        npc_filter=args.npc,
+        action_filter=getattr(args, 'action', None),
+    )
     posts = fetch_recent_posts(
         conn,
         limit=args.limit // 2,
@@ -331,11 +460,15 @@ def create_display(conn, args) -> Layout:
 
     layout = Layout()
     layout.split_column(
-        Layout(create_stats_panel(stats, services), size=4),
+        Layout(create_stats_panel(stats, services), size=5),
         Layout(name="main"),
     )
+
+    # Show pipeline: Events → Decisions → Posts
+    show_all_decisions = getattr(args, 'all_decisions', False)
     layout["main"].split_row(
         Layout(create_events_table(events), ratio=1),
+        Layout(create_decisions_table(decisions, show_all=show_all_decisions), ratio=2),
         Layout(create_posts_table(posts), ratio=2),
     )
 
@@ -401,6 +534,17 @@ def main():
         "--channel", "-c",
         type=str,
         help="Filter posts by channel (FEED, CHAT, NEWS)"
+    )
+    parser.add_argument(
+        "--action", "-a",
+        type=str,
+        help="Filter decisions by action (IGNORE, POST_FEED, POST_CHAT, REPLY)"
+    )
+    parser.add_argument(
+        "--all-decisions",
+        action="store_true",
+        dest="all_decisions",
+        help="Show all decisions including IGNORE"
     )
 
     args = parser.parse_args()

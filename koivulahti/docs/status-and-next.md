@@ -1,6 +1,6 @@
 # Current Status & Next Steps (Live)
 
-Updated: 2025-12-17
+Updated: 2025-12-21
 
 ## What's implemented now
 
@@ -9,11 +9,14 @@ Updated: 2025-12-17
 - ✅ `infra/docker-compose.yml` with CPU/GPU llama.cpp profiles
 - ✅ `infra/.env` configured for **GPU mode** with **Qwen2.5 7B Instruct Q4_K_M** model
 - ✅ Migrations: `001_init.sql` (events/posts/jobs), `002_kickoff_tables.sql` (entities/profiles/relationships/memories/goals)
+- ✅ **NEW: `migrations/005_decisions.sql`** - Decision Service audit log
 
 ### Shared Packages
 - ✅ `packages/shared/settings.py`, `db.py`, `schemas.py`
 - ✅ `packages/shared/data_loader.py` loads canonical catalog
 - ✅ `packages/shared/data/event_types.json` in-tree
+- ✅ **NEW: `packages/shared/gemini_client.py`** - Gemini 2.0 Flash API client (httpx)
+- ✅ **NEW: `packages/shared/data/gemini_client_3_flash.py`** - Gemini 3 Flash Preview client (google-genai SDK)
 
 ### Engine (`services/engine/app/runner.py`)
 - ✅ Seeds DB from catalog if empty (places, NPCs, profiles, relationship edges, goals)
@@ -28,6 +31,19 @@ Updated: 2025-12-17
 - ✅ **Impact scoring system** (novelty, conflict, publicness, status, cascade potential)
 - ✅ **Event effects** applied to relationships and memories
 - ✅ Enqueues render jobs to Redis based on impact thresholds
+- ✅ **NEW: `DECISION_SERVICE_ENABLED` feature flag** - routes to Decision Service when enabled
+
+### Decision Service (`services/decision_service/`) - NEW!
+- ✅ **Gemini 2.0 Flash LLM** for NPC decision-making
+- ✅ **Separated architecture**: Decision (LLM) vs Rendering (local llama.cpp)
+- ✅ **Context builder** (`context.py`) - fetches NPC profile, memories, relationships
+- ✅ **Prompt engineering** (`prompts.py`) - structured decision prompts
+- ✅ **Decision maker** (`decision.py`) - calls Gemini, validates output
+- ✅ **Rate limiting** - configurable `DECISION_MIN_INTERVAL` (default 10s)
+- ✅ **Audit logging** - all decisions logged to `decisions` table
+- ✅ **Actions**: IGNORE, POST_FEED, POST_CHAT, REPLY
+- ✅ **Intents**: spread_info, agree, disagree, joke, worry, practical, emotional, question, neutral
+- ✅ **Emotions**: curious, happy, annoyed, worried, neutral, amused, proud, sad
 
 ### Workers (`services/workers/app/worker.py`)
 - ✅ Pops Redis jobs, fetches author profile
@@ -52,9 +68,13 @@ Updated: 2025-12-17
 
 ### Tools (`tools/`)
 - ✅ **`village_monitor.py`** - CLI activity feed for debugging
-  - Live terminal view of events and posts
-  - Filter by NPC, event type, channel
+  - Live terminal view of full pipeline: Events → Decisions → Posts
+  - **NEW: Decision Service stats** - active decisions, latency, errors
+  - **NEW: Gemini decision column** - shows action, emotion, draft
+  - Filter by NPC, event type, channel, action
+  - Service health status (db, redis, llm, gateway, api, engine, decision, workers)
   - Usage: `./tools/village_monitor.py --live`
+  - Options: `--all-decisions` (show IGNORE too), `--action POST_FEED`
 
 ### Testing & Documentation
 - ✅ Smoke tests passing (API health, events, posts, LLM gateway)
@@ -154,6 +174,72 @@ curl http://localhost:8082/events?limit=5
     - NPC profiles & relationships
     - Live feed/chat/news streams
     - Relationship graph visualization
+
+## Session Summary (2025-12-21) - Decision Service & Gemini Integration
+
+**Uusi arkkitehtuuri:** Päätöksenteko (Gemini LLM) erotettu renderöinnistä (local llama.cpp)
+
+### Toteutetut komponentit:
+
+| Komponentti | Tiedostot | Status |
+|-------------|-----------|--------|
+| Migraatio | `migrations/005_decisions.sql` | ✅ |
+| Skeemat | `packages/shared/schemas.py` (DecisionContext, DecisionResult) | ✅ |
+| Gemini Client | `packages/shared/gemini_client.py` (httpx, 2.0-flash-exp) | ✅ |
+| Gemini Client v2 | `packages/shared/data/gemini_client_3_flash.py` (google-genai SDK, 3-flash-preview) | ✅ |
+| Decision Service | `services/decision_service/` (context.py, decision.py, prompts.py, main.py) | ✅ |
+| Engine-muutokset | `services/engine/app/runner.py` (enqueue_decision_job, feature flag) | ✅ |
+| Worker-muutokset | `services/workers/app/worker.py` (templates, process_decision_job) | ✅ |
+| Docker-compose | `infra/docker-compose.yml` (decision-service lisätty) | ✅ |
+| Monitori | `tools/village_monitor.py` (Decisions-sarake, Gemini-tilastot) | ✅ |
+
+### Arkkitehtuurikuvaus:
+
+```
+Engine (stimulus) → Decision Queue → Decision Service (Gemini) → Render Queue → Workers (llama.cpp)
+                                           ↓
+                                    decisions-taulu (audit log)
+```
+
+### Konfiguraatio (.env):
+
+```bash
+DECISION_SERVICE_ENABLED=true    # Feature flag
+GEMINI_API_KEY=AIza...           # Gemini API key
+DECISION_MIN_INTERVAL=10.0       # Rate limit (sekuntia kutsujen välillä)
+```
+
+### Käyttöönotto:
+
+```bash
+cd koivulahti/infra
+docker-compose down
+docker-compose --profile gpu up -d
+docker-compose logs decision-service -f
+```
+
+### Monitorointi:
+
+```bash
+./tools/village_monitor.py --live   # Näyttää: Events → Decisions → Posts
+```
+
+### Testitulokset:
+
+- ✅ Gemini 2.0 Flash toimii (~1.3s latenssi)
+- ✅ Rate limiting estää 429-virheet (10s/kutsu)
+- ✅ NPC:t tekevät persoonallisia päätöksiä
+- ✅ Decision → Render pipeline toimii
+- ⚠️ Postausten laatu vaihtelee (draft ei aina käänny hyvin suomeksi)
+
+### Jatkotyöt:
+
+- 🔲 Gemini 3 Flash -mallin testaus (parempi suomi?)
+- 🔲 Parempi draft → suomi mapping (few-shot esimerkit?)
+- 🔲 Decision reasoning → worker konteksti
+- 🔲 Relationship-pohjainen päätöksenteko
+
+---
 
 ## Session Summary (2025-12-17) - Ambient Event Generator
 

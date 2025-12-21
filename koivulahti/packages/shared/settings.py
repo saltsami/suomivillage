@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     database_url: str = "postgresql://koivulahti:koivulahti@postgres:5432/koivulahti"
     redis_url: str = "redis://redis:6379/0"
     render_queue: str = "render_jobs"
+    decision_queue: str = "decision_jobs"
+    decision_service_enabled: bool = True
     llm_gateway_url: str = "http://llm-gateway:8081"
     llm_provider: str = "llama_cpp"
     llm_server_url: str = "http://llm-server:8080"
