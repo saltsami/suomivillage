@@ -8,7 +8,7 @@ from google import genai
 from google.genai import types
 
 # Configuration for Gemini 3 Flash
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAC2Z7e3n-vNyw2GgtesTVhdY4fngfnmWQ")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-3-flash-preview"
 
 # Default generation parameters
