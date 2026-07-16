@@ -1,7 +1,6 @@
 """Context Builder - fetches NPC context from database for decision-making."""
 
 import json
-from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
 import asyncpg

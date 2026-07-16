@@ -11,7 +11,6 @@ from redis.asyncio import Redis
 
 from packages.shared.settings import Settings
 
-
 # =============================================================================
 # TEMPLATE SYSTEM FOR DECISION-BASED RENDERING
 # =============================================================================
@@ -303,7 +302,6 @@ def event_facts_fi(event: dict) -> str:
     t = event.get("type", "UNKNOWN")
     place = (event.get("place_id") or "place_kylä").replace("place_", "")
     payload = event.get("payload") or {}
-    actors = event.get("actors", [])
     targets = event.get("targets", [])
 
     # Extract payload details
@@ -533,7 +531,6 @@ def make_draft(channel: str, event: Dict[str, Any], author_id: str, prompt_conte
             return payload["draft"]
         reply_type = payload.get("reply_type", "neutral")
         original_author = payload.get("author_id", "").replace("npc_", "").capitalize()
-        original_text = payload.get("original_text", "")[:50]
         if reply_type == "question":
             opts = [f"@{original_author} Kerro lisää!", f"@{original_author} Mitä tarkoitat?"]
         elif reply_type in ["agree", "neutral"]:

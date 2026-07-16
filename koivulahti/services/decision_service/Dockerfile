@@ -2,9 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install dependencies
-COPY services/decision_service/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install the shared, hash-locked runtime dependency set.
+COPY requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 # Copy shared packages
 COPY packages /app/packages

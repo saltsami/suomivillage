@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH="/app"
 
-RUN pip install --no-cache-dir fastapi uvicorn[standard] asyncpg pydantic-settings
+COPY requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY packages ./packages
 COPY services/api/app ./app

@@ -6,7 +6,6 @@ from typing import Any, Dict, List
 
 from .schemas import EventTypeItem, NPCProfile, Place, RelationshipEdge
 
-
 DATA_DIR = Path(__file__).parent / "data"
 
 

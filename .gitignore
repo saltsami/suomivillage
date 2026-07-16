@@ -1,12 +1,22 @@
 .env
+.env.*
+!.env.example
 koivulahti/infra/.env
 *.gguf
 
 # Python
 venv/
+.venv/
 koivulahti/venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Local process files
+*.pid

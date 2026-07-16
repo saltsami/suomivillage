@@ -1,4 +1,4 @@
-"""Gemini 2.0 Flash API client for Decision Service."""
+"""Configurable Gemini API client for the opt-in Decision Service."""
 
 import json
 import os
@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional
 import httpx
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = "gemini-2.0-flash-exp"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-lite")
 GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta"
 
 # Default generation config
@@ -21,16 +21,24 @@ DEFAULT_CONFIG = {
 
 
 class GeminiClient:
-    """Async client for Gemini 2.0 Flash API."""
+    """Async client for Gemini structured-output requests."""
 
-    def __init__(self, api_key: Optional[str] = None, timeout: float = 30.0):
+    def __init__(
+        self,
+        api_key: Optional[str] = None,
+        model: Optional[str] = None,
+        timeout: float = 30.0,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
+    ):
         self.api_key = api_key or GEMINI_API_KEY
+        self.model = model or GEMINI_MODEL
         self.timeout = timeout
+        self.transport = transport
         self._client: Optional[httpx.AsyncClient] = None
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._client is None:
-            self._client = httpx.AsyncClient(timeout=self.timeout)
+            self._client = httpx.AsyncClient(timeout=self.timeout, transport=self.transport)
         return self._client
 
     async def close(self) -> None:
@@ -47,7 +55,7 @@ class GeminiClient:
         max_retries: int = 3,
     ) -> Dict[str, Any]:
         """
-        Generate a response from Gemini 2.0 Flash.
+        Generate a structured response from the configured Gemini model.
 
         Args:
             prompt: The user prompt
@@ -63,7 +71,7 @@ class GeminiClient:
             raise ValueError("GEMINI_API_KEY not set")
 
         client = await self._get_client()
-        url = f"{GEMINI_BASE_URL}/models/{GEMINI_MODEL}:generateContent?key={self.api_key}"
+        url = f"{GEMINI_BASE_URL}/models/{self.model}:generateContent"
 
         # Build request body
         contents = [{"role": "user", "parts": [{"text": prompt}]}]
@@ -92,7 +100,11 @@ class GeminiClient:
         last_error: Optional[Exception] = None
         for attempt in range(max_retries):
             try:
-                response = await client.post(url, json=body)
+                response = await client.post(
+                    url,
+                    headers={"x-goog-api-key": self.api_key},
+                    json=body,
+                )
                 response.raise_for_status()
 
                 data = response.json()

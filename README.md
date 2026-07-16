@@ -1,325 +1,184 @@
 # Suomivillage / Koivulahti
 
-A deterministic village simulation that generates social media-style content from events. NPCs live in a Finnish village, interact with each other, and their actions are rendered as FEED, CHAT, and NEWS posts using local LLMs.
+Koivulahti is an event-driven Finnish village simulation prototype. It stores world events, derives NPC memories and relationships, and renders selected events into `FEED`, `CHAT`, and `NEWS` posts.
 
-## What is this?
+> **Project status:** recovery and product-validation phase. The repository is useful, but the current runtime is not yet an autonomous village or a validated consumer product. The next target is a bounded seven-day Finnish live-soap pilot with six characters.
 
-**Koivulahti** (Birch Bay) is an event-driven simulation engine that:
+Read the full [repository and product audit](docs/REPO_AUDIT_2026-07-16.md) before extending the old roadmap. The completed infrastructure work is tracked in the [Phase 0 rescue note](docs/PHASE_0_RESCUE_2026-07-16.md).
 
-- Runs a continuous simulation of a small Finnish village with ~10 NPCs
-- Generates events (conversations, conflicts, visits, interactions) deterministically
-- Tracks NPC relationships, memories, and goals
-- Computes impact scores for events based on novelty, conflict, and social dynamics
-- Generates social media-style posts (FEED/CHAT/NEWS) using local LLMs (llama.cpp)
-- Maintains full determinism for reproducibility and replay
+## Current decision
 
-## Quick Start
+- Keep the event-first architecture and content catalog.
+- Do not build a generic AI-village platform.
+- Keep external decision and ambient-data services opt-in.
+- Build a small causal vertical slice, then validate it with real viewers.
 
-### Prerequisites
+## Safe quick start
 
-- Docker & Docker Compose
-- Python 3.11+ (for development)
-- 4GB+ RAM for CPU inference (16GB+ recommended for GPU)
-- ~4.5GB disk space for model
+Requirements:
 
-### 1. Download the LLM model
+- Docker with Compose v2
+- Approximately 2 GB free memory for the fake-provider stack
+- [`uv`](https://docs.astral.sh/uv/) only when running tests
 
-```bash
-# From project root
-cd koivulahti
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-pip install huggingface-hub
-
-# Download Mistral 7B Instruct (Q4 quantized)
-hf download TheBloke/Mistral-7B-Instruct-v0.2-GGUF \
-  mistral-7b-instruct-v0.2.Q4_K_M.gguf \
-  --local-dir models
-```
-
-### 2. Start the services
-
-```bash
-cd koivulahti/infra
-
-# Option A: CPU mode (slower, no GPU required)
-docker-compose --profile cpu up -d
-
-# Option B: GPU mode (requires NVIDIA GPU + nvidia-docker)
-docker-compose --profile gpu up -d
-```
-
-### 3. Watch it run
-
-```bash
-# View engine logs (simulation events)
-docker-compose logs engine -f
-
-# View worker logs (content generation)
-docker-compose logs workers -f
-
-# Check recent events via API
-curl http://localhost:8082/events?limit=5 | jq
-
-# Check generated posts
-curl http://localhost:8082/posts?limit=5 | jq
-```
-
-### 4. Run smoke tests
-
-```bash
-# From koivulahti directory
-source venv/bin/activate
-python tests/test_smoke.py
-```
-
-## Architecture Overview
-
-```
-┌─────────────┐
-│   Engine    │  Generates events, computes impact, updates state
-│  (Python)   │  → Enqueues render jobs to Redis
-└──────┬──────┘
-       │
-       ├─→ PostgreSQL (events, state, posts)
-       └─→ Redis Queue (render jobs)
-              │
-              ↓
-       ┌──────────┐
-       │ Workers  │  Pop jobs, call LLM Gateway, persist posts
-       │ (Python) │
-       └────┬─────┘
-            │
-            ↓
-    ┌─────────────┐
-    │LLM Gateway  │  Adapter for llama.cpp, validates JSON
-    │  (FastAPI)  │
-    └─────┬───────┘
-          │
-          ↓
-   ┌──────────────┐
-   │ llama.cpp    │  Mistral 7B Instruct (local inference)
-   │   Server     │
-   └──────────────┘
-```
-
-**Key Features:**
-- **Deterministic:** Seeded RNG ensures reproducible simulations
-- **Event-driven:** Truth comes from events, not LLM hallucinations
-- **Impact-based:** Only high-impact events generate posts (configurable thresholds)
-- **Memory & Relationships:** NPCs remember events and relationship states evolve
-- **Local LLM:** Privacy-first, no external API calls
-
-## Project Structure
-
-```
-koivulahti/
-├── services/
-│   ├── engine/          # Simulation loop, event injectors
-│   ├── workers/         # Content generation workers
-│   ├── llm_gateway/     # LLM adapter & JSON validation
-│   └── api/             # Read API for events/posts
-├── packages/shared/
-│   ├── data/            # Catalog (event_types.json)
-│   ├── db.py            # Database utilities
-│   ├── schemas.py       # Pydantic models
-│   └── settings.py      # Shared config
-├── migrations/          # PostgreSQL schema
-├── infra/
-│   ├── docker-compose.yml
-│   └── .env            # Configuration
-├── docs/
-│   ├── architecture.md # Detailed architecture + diagrams
-│   ├── contracts.md    # API contracts
-│   └── status-and-next.md # Current status & roadmap
-├── tests/
-│   └── test_smoke.py   # Integration tests
-└── models/             # Downloaded LLM models (.gguf)
-```
-
-## Configuration
-
-Key environment variables in `infra/.env`:
-
-```bash
-# Simulation settings
-SIM_SEED=1234                    # Random seed for determinism
-SIM_TICK_MS=1000                 # Simulation tick interval (ms)
-
-# Impact thresholds (0.0-1.0)
-IMPACT_THRESHOLD_FEED=0.6        # FEED posts threshold
-IMPACT_THRESHOLD_CHAT=0.4        # CHAT posts threshold
-IMPACT_THRESHOLD_NEWS=0.8        # NEWS posts threshold
-
-# LLM settings
-LLM_SERVER_URL=http://llm-server-cpu:8080
-LLM_MODEL_PATH=/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf
-LLM_TEMPERATURE=0.7
-```
-
-## API Endpoints
-
-Once running, the API is available at `http://localhost:8082`:
-
-### Events
-```bash
-GET /events?limit=50
-```
-
-Returns recent simulation events with impact scores.
-
-### Posts
-```bash
-GET /posts?limit=50
-```
-
-Returns generated posts (FEED/CHAT/NEWS).
-
-### Health
-```bash
-GET /health
-```
-
-### LLM Gateway
-```bash
-POST http://localhost:8081/generate
-```
-
-Direct access to content generation (see `docs/contracts.md`).
-
-## Development
-
-### Running tests
+Start the reproducible stack without an external model or API key:
 
 ```bash
 cd koivulahti
-source venv/bin/activate
-python tests/test_smoke.py
+./dev.sh up
 ```
 
-### Database migrations
+The API is then available only on the local loopback interface:
+
+```text
+http://127.0.0.1:8082/docs
+http://127.0.0.1:8082/health
+http://127.0.0.1:8082/events?limit=20
+http://127.0.0.1:8082/posts?limit=20
+```
+
+The default `fake` renderer is deterministic and intended for development and CI. PostgreSQL, Redis, the LLM gateway, and llama.cpp are not published to the host by the base Compose file.
+
+Stop without deleting data:
 
 ```bash
-# Migrations run automatically on first startup
-# To reset: docker-compose down -v && docker-compose up -d
+./dev.sh down
 ```
 
-### Viewing logs
+## Developer commands
 
 ```bash
-# All services
-docker-compose logs -f
-
-# Specific service
-docker-compose logs engine -f
-docker-compose logs workers -f
-docker-compose logs llm-gateway -f
+./dev.sh up-dev       # Loopback DB, Redis and gateway ports for diagnostics
+./dev.sh config       # Validate all Compose profiles
+./dev.sh build        # Build all six application images
+./dev.sh test-unit    # Offline tests
+./dev.sh test-e2e     # Disposable fake-provider stack and integration tests
+./dev.sh logs         # Follow core application logs
+./dev.sh ps           # Service status
 ```
 
-### Rebuilding services
+`./dev.sh test-e2e` uses a separate Compose project and deletes only its own disposable volume after the run.
+
+## Real model profiles
+
+Local llama.cpp inference remains optional. Put a GGUF model under `koivulahti/models/`, then run:
 
 ```bash
-# After code changes
-docker-compose build engine workers llm-gateway api
-docker-compose up -d
+./dev.sh up-cpu
+# or, with NVIDIA Container Toolkit installed:
+./dev.sh up-gpu
 ```
 
-## Current Status
+Override model settings in a private ignored file:
 
-**Working:**
-- ✅ Deterministic simulation engine with continuous tick loop
-- ✅ Day 1 seed events (17 scripted events from catalog)
-- ✅ Post-Day 1 routine event injector (generates events every 10 ticks)
-- ✅ Impact scoring system (novelty, conflict, publicness, status, cascade)
-- ✅ Event effects (memories, relationship deltas)
-- ✅ LLM Gateway with llama.cpp integration
-- ✅ Content generation workers
-- ✅ Read API for events/posts
-- ✅ Smoke tests passing
-- ✅ CORS middleware
-- ✅ CPU/GPU profiles for llama.cpp
+```bash
+cp infra/.env.example infra/.env
+# edit infra/.env
+ENV_FILE=infra/.env ./dev.sh up-cpu
+```
 
-**In Progress:**
-- 🚧 Wire prompt templates from catalog (currently hardcoded)
-- 🚧 Daily NEWS digest (1x per sim day, top events)
-- 🚧 Nightly memory summaries & compaction
-- 🚧 Moderation & rate limits enforcement
-- 🚧 World snapshots for replay
+The cloud Decision Service is disabled by default. It currently supports the configured Gemini model through the `GEMINI_MODEL` variable, whose safe default is `gemini-3.1-flash-lite`.
 
-**Planned:**
-- 📋 Agent decision loop (NPCs choose actions via LLM)
-- 📋 Director/injectors for narrative arcs
-- 📋 Admin UI
-- 📋 Read-only village UI
+```bash
+# GEMINI_API_KEY must be present in the ignored infra/.env file
+ENV_FILE=infra/.env ./dev.sh up-decision
+```
 
-See [docs/status-and-next.md](koivulahti/docs/status-and-next.md) for detailed roadmap.
+Do not commit `.env`, API keys, or GGUF model files.
 
-## Documentation
+## Runtime shape
 
-- **[Architecture](koivulahti/docs/architecture.md)** - System design, data flows, diagrams
-- **[Contracts](koivulahti/docs/contracts.md)** - API contracts, database schema
-- **[Status & Roadmap](koivulahti/docs/status-and-next.md)** - Current progress, next milestones
+```text
+Engine ──events──> PostgreSQL
+  │                    │
+  └──render jobs──> Redis ──> Workers ──> LLM Gateway ──> Posts
+                                         │
+                                         ├── fake provider (default)
+                                         └── llama.cpp (opt-in)
 
-## Technical Details
+API ──read-only views──> PostgreSQL
+```
 
-### How it works
+Optional, currently experimental paths:
 
-1. **Engine** seeds the world (places, NPCs, relationships, goals) on first run
-2. **Day 1 events** are injected from the catalog (scripted baseline narrative)
-3. **Tick loop** runs continuously (default: 1 tick/second)
-4. **Routine injector** generates events every 10 ticks:
-   - Selects NPC deterministically (round-robin)
-   - Chooses event type via seeded RNG (LOCATION_VISIT, SMALL_TALK, CUSTOMER_INTERACTION)
-   - Matches place by type (sauna/beach, cafe, shop)
-5. Each event is **processed**:
-   - Inserted to `events` table with `sim_ts`
-   - Effects applied (memories, relationship updates)
-   - Impact score computed (0.0-1.0)
-   - Render jobs enqueued if impact ≥ threshold
-6. **Workers** pop render jobs from Redis:
-   - Build prompt with event context
-   - Call LLM Gateway
-   - Parse JSON response
-   - Persist to `posts` table
-7. **Posts** are available via API
+```text
+Ambient Worker ──> ambient events
+Gemini Decision Service ──> IGNORE / POST_FEED / POST_CHAT / REPLY
+```
 
-### Impact Scoring
+The existing Decision Service chooses publishing actions, not world-changing actions. `MOVE`, `HELP`, `BORROW`, `RETURN`, and other legal world actions belong to the next vertical slice.
 
-Impact is a weighted sum (0.0-1.0) of:
+## Services
 
-- **Novelty** (30%): Inverse frequency of event type in last 24h
-- **Conflict** (25%): Event severity
-- **Publicness** (20%): How public the event is
-- **Status** (15%): Average status of involved NPCs
-- **Cascade** (10%): Potential for effects (relationship deltas, reputation)
+- `postgres`: event store and simulation state
+- `migration-runner`: checksummed, ordered SQL migrations
+- `redis`: current render and decision queues
+- `engine`: simulation ticks, seed scenario, routine events and effects
+- `workers`: render-job processing and post persistence
+- `llm-gateway`: provider boundary and response normalization
+- `api`: read API plus explicitly unfinished admin endpoints
+- `decision-service`: opt-in Gemini publishing decision prototype
+- `ambient-worker`: opt-in external stimulus prototype
 
-Only events with `impact >= threshold[channel]` generate posts:
-- CHAT: 0.4 (everyday conversations)
-- FEED: 0.6 (notable events)
-- NEWS: 0.8 (major village news)
+## Migrations
 
-### Determinism
+The stack no longer relies on PostgreSQL's first-boot-only init directory. `migration-runner` applies files matching `migrations/NNN_name.sql`, records SHA-256 checksums in `schema_migrations`, and refuses changed migrations that were already applied.
 
-- All randomness uses seeded RNG (`SIM_SEED`)
-- RNG threaded through tick loop for reproducibility
-- LLM output does not affect simulation truth (events)
-- Events can be replayed from database (future: with snapshots)
+Create a new migration instead of editing an applied one.
 
-## License
+## Tests and CI
 
-[License TBD]
+Install the locked development environment:
 
-## Contributing
+```bash
+cd koivulahti
+uv sync --locked
+```
 
-Contributions welcome! This is an experimental project exploring deterministic social simulations with local LLMs.
+Run checks locally:
 
-**Areas to explore:**
-- Better event injectors (goal-driven, narrative-driven)
-- Improved impact scoring
-- Memory retrieval & compaction strategies
-- Multi-agent decision loops
-- UI/visualization
+```bash
+uv run ruff check packages services tests tools
+uv run pytest -m "not integration"
+uv run bandit -q -lll -r packages services
+uv run pip-audit
+./dev.sh test-e2e
+```
 
-## Contact
+GitHub Actions runs linting, offline tests, dependency and static-security checks, secret scanning, all application builds, and the fake-provider E2E flow.
 
-[Contact info TBD]
+## Repository map
+
+```text
+.
+├── docs/                         # Audit and product decision
+├── koivulahti/
+│   ├── infra/                    # Compose and environment templates
+│   ├── migrations/               # Ordered SQL migrations and runner
+│   ├── packages/shared/          # Contracts, settings and provider adapters
+│   ├── services/                 # API, engine, workers and optional services
+│   ├── tests/                    # Offline and integration tests
+│   ├── dev.sh                    # Canonical local command surface
+│   ├── pyproject.toml
+│   ├── uv.lock                     # Full development lock
+│   └── requirements.lock           # Hash-locked container runtime export
+└── .github/workflows/ci.yml
+```
+
+## Product roadmap
+
+1. **Repository rescue:** secure startup, supported providers, CI, versioned migrations.
+2. **World-action vertical slice:** six characters and a deterministic legal-action loop.
+3. **Finnish content evaluation:** one renderer, daily recap and human-rated quality gates.
+4. **Viewer slice:** mobile feed, chat, news, character context and one daily vote.
+5. **Seven-day closed season:** continuation only if retention and story-comprehension gates pass.
+
+The detailed gates, commercial assessment, competitor review and stop criteria are in [the audit](docs/REPO_AUDIT_2026-07-16.md).
+
+## Security notes
+
+- Base Compose publishes only the API, bound to `127.0.0.1` by default.
+- The development override publishes diagnostics only on loopback.
+- Gemini credentials are sent in the `x-goog-api-key` header, not in request URLs.
+- The old feature-branch credential must still be revoked and its remote history purged separately.
+- This prototype is not ready for direct public deployment.

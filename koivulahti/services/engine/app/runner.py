@@ -10,8 +10,6 @@ import asyncpg
 from redis.asyncio import Redis
 
 from packages.shared.archetype_mapping import (
-    ARCHETYPE_MAPPING,
-    APPRAISAL_ARCHETYPES,
     get_appraisal_archetype,
 )
 from packages.shared.data_loader import (

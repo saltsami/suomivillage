@@ -3,8 +3,9 @@
 import re
 
 import pytest
-
 from conftest import call_generate
+
+pytestmark = pytest.mark.integration
 
 # Finnish bad openers that indicate meta-text or explanations
 BAD_OPENERS = [

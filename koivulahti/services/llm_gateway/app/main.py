@@ -1,29 +1,31 @@
 import json
 import re
+from contextlib import asynccontextmanager
 from typing import Any, Dict, Optional, Tuple
 
 import httpx
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from packages.shared.settings import Settings
 
 settings = Settings()
 client = httpx.AsyncClient(timeout=60.0)
-app = FastAPI(title="Koivulahti LLM Gateway", version="0.1.0")
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    try:
+        yield
+    finally:
+        await client.aclose()
+
+
+app = FastAPI(title="Koivulahti LLM Gateway", version="0.1.0", lifespan=lifespan)
 
 # Channel-specific character limits
 MAX_CHARS_BY_CHANNEL = {"FEED": 280, "CHAT": 220, "NEWS": 480}
 TONES = ["friendly", "neutral", "defensive", "snarky", "concerned", "formal", "hyped"]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 SYSTEM_JSON_INSTRUCTION = (
     "Vastaa VAIN valid JSON-objektina.\n\n"
@@ -102,14 +104,32 @@ def build_json_schema(req: GenerateRequest) -> Dict[str, Any]:
     }
 
 
-@app.on_event("shutdown")
-async def shutdown_client() -> None:
-    await client.aclose()
-
-
 @app.get("/health")
 async def health() -> dict[str, str]:
-    return {"status": "ok", "env": settings.env}
+    return {"status": "ok", "env": settings.env, "provider": settings.llm_provider}
+
+
+def generate_fake_response(request: GenerateRequest) -> GenerateResponse:
+    """Return a deterministic Finnish response for local development and CI."""
+    if request.channel == "NEWS":
+        text = "Koivulahdessa tapahtui uusi käänne. Asiaa selvitetään kylällä."
+        tone = "formal"
+    elif request.channel == "CHAT":
+        text = "Mä kuulin tästä juuri. Selvitetään asia rauhassa."
+        tone = "friendly"
+    else:
+        text = "Mä huomasin mitä tapahtui. Palaan asiaan myöhemmin."
+        tone = "neutral"
+
+    return GenerateResponse(
+        channel=request.channel,
+        author_id=request.author_id,
+        source_event_id=request.source_event_id,
+        tone=tone,
+        text=text,
+        tags=["koivulahti", "testi"],
+        safety_notes="fake_provider",
+    )
 
 
 def build_messages(request: GenerateRequest) -> list[dict[str, str]]:
@@ -293,6 +313,8 @@ def normalize_response(raw: Dict[str, Any], request: GenerateRequest, fallback_t
 
 @app.post("/generate", response_model=GenerateResponse)
 async def generate(request: GenerateRequest) -> GenerateResponse:
+    if settings.llm_provider == "fake":
+        return generate_fake_response(request)
     if settings.llm_provider != "llama_cpp":
         raise HTTPException(status_code=501, detail=f"Unsupported LLM_PROVIDER: {settings.llm_provider}")
 
@@ -362,10 +384,10 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
     needs_polish = False
     if request.channel in ("FEED", "CHAT"):
         if has_banned_phrases(response.text):
-            print(f"[llm-gateway] Banned phrase detected, polishing")
+            print("[llm-gateway] Banned phrase detected, polishing")
             needs_polish = True
         elif has_third_person_self(response.text, request.author_id):
-            print(f"[llm-gateway] Third-person-self detected, polishing")
+            print("[llm-gateway] Third-person-self detected, polishing")
             needs_polish = True
 
     if needs_polish:
@@ -383,7 +405,7 @@ async def generate(request: GenerateRequest) -> GenerateResponse:
             polished_text = polished_text.strip('"\'')
             if polished_text and len(polished_text) < 300 and not has_banned_phrases(polished_text):
                 response.text = polished_text
-                print(f"[llm-gateway] Polish successful")
+                print("[llm-gateway] Polish successful")
         except Exception as e:
             print(f"[llm-gateway] Polish failed: {e}")
 

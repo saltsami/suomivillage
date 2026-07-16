@@ -258,7 +258,7 @@ async def main() -> None:
                 if total > 0:
                     print(f"[ambient_worker] cycle complete: {counts}")
                 else:
-                    print(f"[ambient_worker] cycle complete: no new events (already exist)")
+                    print("[ambient_worker] cycle complete: no new events (already exist)")
             except Exception as e:
                 print(f"[ambient_worker] error: {e}")
 

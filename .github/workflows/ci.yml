@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: koivulahti
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.7"
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: Verify container dependency export
+        run: |
+          uv export --locked --no-dev --no-emit-project --format requirements-txt --output-file requirements.lock
+          git diff --exit-code -- requirements.lock
+      - name: Lint
+        run: uv run ruff check packages services tests tools
+      - name: Offline tests
+        run: uv run pytest -m "not integration"
+      - name: Static security scan
+        run: uv run bandit -q -lll -r packages services
+      - name: Dependency audit
+        run: uv run pip-audit
+      - name: Compose validation
+        run: ./dev.sh config
+
+  fake-provider-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: koivulahti
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.7"
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --locked
+      - name: Build all application images
+        run: ./dev.sh build
+      - name: Disposable fake-provider integration test
+        run: ./dev.sh test-e2e
+
+  secrets:
+    runs-on: ubuntu-latest
+    steps:
+      # Scan the submitted change. The known historical feature branch is purged separately.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,7 @@
 # Decision Service Architecture
 
+> **Experimental and opt-in.** This service currently chooses publishing actions, not legal world actions. It is disabled in the default stack until durable jobs and throughput controls are implemented.
+
 ## System Overview
 
 ```
@@ -50,7 +52,7 @@
 │  ┌─────────────────────────────────────────────────────────────────────────┐           │
 │  │                     Google Gemini API (Decision LLM)                     │           │
 │  │                                                                          │           │
-│  │  Model: gemini-2.0-flash-exp (active) / gemini-3-flash-preview (ready)  │           │
+│  │  Model: configured with GEMINI_MODEL (default: gemini-3.1-flash-lite)   │           │
 │  │  Endpoint: generativelanguage.googleapis.com                            │           │
 │  │  Purpose: NPC decision-making (action, intent, emotion, draft)          │           │
 │  │  Rate limit: ~6 calls/min (configurable via DECISION_MIN_INTERVAL)      │           │
@@ -125,14 +127,14 @@
 
 | Service | Image | Port | Purpose |
 |---------|-------|------|---------|
-| `postgres` | postgres:16 | 5432 | Database |
-| `redis` | redis:7 | 6379 | Job queues |
+| `postgres` | postgres:16 | internal | Database |
+| `redis` | redis:7 | internal | Job queues |
 | `engine` | koivulahti-engine | - | Event generation |
 | `decision-service` | koivulahti-decision-service | - | Gemini LLM decisions |
 | `workers` | koivulahti-workers | - | Finnish rendering |
-| `llm-gateway` | koivulahti-llm-gateway | 8081 | llama.cpp proxy |
-| `llm-server-gpu` | llama.cpp:server-cuda | 8080 | Local LLM |
-| `api` | koivulahti-api | 8082 | REST API |
+| `llm-gateway` | koivulahti-llm-gateway | internal | fake/llama.cpp provider boundary |
+| `llm-server-gpu` | llama.cpp:server-cuda | internal | Local LLM |
+| `api` | koivulahti-api | 127.0.0.1:8082 | REST API |
 | `ambient-worker` | koivulahti-ambient-worker | - | External data fetch |
 
 ## Configuration
@@ -145,30 +147,18 @@ DECISION_SERVICE_ENABLED=true
 DECISION_QUEUE=decision_jobs
 DECISION_MIN_INTERVAL=10.0    # Rate limit (seconds between calls)
 
-# Gemini API
-GEMINI_API_KEY=AIza...
+# Gemini API: keep these only in the ignored infra/.env file
+GEMINI_API_KEY=<set-in-private-env>
+GEMINI_MODEL=gemini-3.1-flash-lite
 
 # Feature flags
 # - true:  Engine → Decision Service (Gemini) → Workers (llama.cpp)
 # - false: Engine → Workers (old hash-based appraisal)
 ```
 
-### Switching LLM Providers
+### Provider configuration
 
-The Decision Service is designed for easy LLM swapping:
-
-```python
-# Current: gemini_client.py (httpx, gemini-2.0-flash-exp)
-# Ready:   gemini_client_3_flash.py (google-genai SDK, gemini-3-flash-preview)
-# Future:  openai_client.py, anthropic_client.py
-```
-
-To switch, update the import in `services/decision_service/app/decision.py`:
-
-```python
-# from packages.shared.gemini_client import generate_decision
-from packages.shared.data.gemini_client_3_flash import generate_decision
-```
+The Decision Service uses the single `packages/shared/gemini_client.py` adapter. Select a supported model through `GEMINI_MODEL`; do not add provider-specific imports to the service loop. Credentials are sent in the `x-goog-api-key` header so they do not appear in request URLs.
 
 ## Monitoring
 

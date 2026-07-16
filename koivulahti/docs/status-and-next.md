@@ -1,4 +1,6 @@
-# Current Status & Next Steps (Live)
+# Historical implementation status (December 2025)
+
+> **Archived plan:** this file records the December 2025 implementation session and contains outdated model and roadmap references. The canonical current status is the root `README.md`; the continuation decision and roadmap are in `docs/REPO_AUDIT_2026-07-16.md`.
 
 Updated: 2025-12-21
 

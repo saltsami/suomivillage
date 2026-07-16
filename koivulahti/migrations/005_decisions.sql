@@ -20,10 +20,10 @@ CREATE TABLE IF NOT EXISTS decisions (
 );
 
 -- Indexes for common queries
-CREATE INDEX idx_decisions_npc ON decisions(npc_id);
-CREATE INDEX idx_decisions_action ON decisions(action);
-CREATE INDEX idx_decisions_processed ON decisions(processed_at DESC);
-CREATE INDEX idx_decisions_stimulus ON decisions(stimulus_event_id) WHERE stimulus_event_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_decisions_npc ON decisions(npc_id);
+CREATE INDEX IF NOT EXISTS idx_decisions_action ON decisions(action);
+CREATE INDEX IF NOT EXISTS idx_decisions_processed ON decisions(processed_at DESC);
+CREATE INDEX IF NOT EXISTS idx_decisions_stimulus ON decisions(stimulus_event_id) WHERE stimulus_event_id IS NOT NULL;
 
 -- Add queue name setting
 COMMENT ON TABLE decisions IS 'Audit log of all NPC decisions made by the Decision Service';

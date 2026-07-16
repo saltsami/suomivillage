@@ -5,6 +5,9 @@ import unittest
 import urllib.error
 import urllib.request
 
+import pytest
+
+pytestmark = pytest.mark.integration
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8082")
 GATEWAY_BASE_URL = os.getenv("LLM_GATEWAY_BASE_URL", "http://localhost:8081")

@@ -2,15 +2,14 @@
 
 import json
 import time
-from datetime import datetime
 from typing import Any, Dict, Optional, Tuple
 from uuid import uuid4
 
 import asyncpg
 
-from packages.shared.gemini_client import generate_decision, DECISION_OUTPUT_SCHEMA
-from .prompts import DECISION_SYSTEM_PROMPT, build_decision_prompt
+from packages.shared.gemini_client import generate_decision
 
+from .prompts import DECISION_SYSTEM_PROMPT, build_decision_prompt
 
 # Valid actions
 VALID_ACTIONS = {"IGNORE", "POST_FEED", "POST_CHAT", "REPLY"}

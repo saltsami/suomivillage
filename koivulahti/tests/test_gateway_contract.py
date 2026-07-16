@@ -1,8 +1,9 @@
 """Contract tests for LLM gateway - validates schema compliance and const locks."""
 
 import pytest
-
 from conftest import call_generate
+
+pytestmark = pytest.mark.integration
 
 MAX_BY_CHANNEL = {"FEED": 280, "CHAT": 220, "NEWS": 480}
 REQUIRED_KEYS = ["channel", "author_id", "source_event_id", "tone", "text", "tags"]
@@ -53,7 +54,7 @@ def test_const_locks_respected(case_name, client, gateway_url, prompt_cases):
 
     assert post["channel"] == case["channel"], f"Channel mismatch: {post['channel']} != {case['channel']}"
     assert post["author_id"] == case["author_id"], f"Author mismatch: {post['author_id']} != {case['author_id']}"
-    assert post["source_event_id"] == case["source_event_id"], f"Event ID mismatch"
+    assert post["source_event_id"] == case["source_event_id"], "Event ID mismatch"
 
 
 @pytest.mark.parametrize("case_name", ["feed_simple", "chat_snarky", "news_verified"])

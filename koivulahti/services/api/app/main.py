@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from typing import List
 
 import asyncpg
@@ -9,29 +10,33 @@ from packages.shared.schemas import Event, Post
 from packages.shared.settings import Settings
 
 settings = Settings()
-app = FastAPI(title="Koivulahti API", version="0.1.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
 pool: asyncpg.Pool | None = None
 
 
-@app.on_event("startup")
-async def on_startup() -> None:
+@asynccontextmanager
+async def lifespan(_: FastAPI):
     global pool
     pool = await create_pool(settings)
+    try:
+        yield
+    finally:
+        if pool:
+            await pool.close()
+        pool = None
 
 
-@app.on_event("shutdown")
-async def on_shutdown() -> None:
-    if pool:
-        await pool.close()
+app = FastAPI(title="Koivulahti API", version="0.1.0", lifespan=lifespan)
+allowed_origins = [
+    origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
+)
 
 
 async def require_pool() -> asyncpg.Pool:

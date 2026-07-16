@@ -9,9 +9,8 @@ import asyncpg
 from redis.asyncio import Redis
 
 from .context import build_decision_context
-from .decision import make_decision, log_decision, decision_to_render_job
+from .decision import decision_to_render_job, log_decision, make_decision
 from .prompts import build_decision_prompt
-
 
 # Environment config
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://koivulahti:koivulahti@postgres:5432/koivulahti")

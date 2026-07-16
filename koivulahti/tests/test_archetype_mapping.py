@@ -13,8 +13,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from packages.shared.archetype_mapping import (
-    ARCHETYPE_MAPPING,
     APPRAISAL_ARCHETYPES,
+    ARCHETYPE_MAPPING,
     CATALOG_ARCHETYPES,
     get_appraisal_archetype,
 )

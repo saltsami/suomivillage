@@ -6,7 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH="/app"
 
-RUN pip install --no-cache-dir redis httpx pydantic pydantic-settings asyncpg
+COPY requirements.lock .
+RUN pip install --no-cache-dir --require-hashes -r requirements.lock
 
 COPY packages ./packages
 COPY services/workers/app ./app

@@ -14,23 +14,22 @@ Or use venv: source venv/bin/activate
 
 import argparse
 import os
+import subprocess
 import sys
 import time
-import socket
-import subprocess
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Optional
-from urllib.request import urlopen
 from urllib.error import URLError
+from urllib.request import urlopen
 
 try:
     import psycopg2
     from rich.console import Console
-    from rich.table import Table
-    from rich.panel import Panel
-    from rich.live import Live
-    from rich.text import Text
     from rich.layout import Layout
+    from rich.live import Live
+    from rich.panel import Panel
+    from rich.table import Table
+    from rich.text import Text
 except ImportError:
     print("Missing packages. Run:")
     print("  source venv/bin/activate && pip install psycopg2-binary rich")
@@ -71,9 +70,9 @@ def get_db_connection():
 def check_service(url: str, timeout: float = 1.0) -> tuple[bool, str]:
     """Check if a HTTP service is responding."""
     try:
-        resp = urlopen(url, timeout=timeout)
-        return True, "ok"
-    except URLError as e:
+        with urlopen(url, timeout=timeout):
+            return True, "ok"
+    except URLError:
         return False, "down"
     except Exception:
         return False, "err"

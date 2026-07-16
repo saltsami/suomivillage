@@ -1,4 +1,6 @@
-Koivulahti – Developer README (MVP, live)
+Koivulahti – Developer README (historical scaffold, December 2025)
+
+HUOM: Tämä tiedosto on arkistoitu toteutussnapshot. Nykyinen käynnistys- ja kehitysohje on repon juuressa `README.md`; jatkopäätös on `docs/REPO_AUDIT_2026-07-16.md`.
 
 Koivulahti on fiktiivinen agenttikylä: simulaatio tuottaa deterministisiä eventtejä (totuus), ja sisältökerros renderöi niistä FEED/CHAT/NEWS‑julkaisuja LLM‑gatewayn kautta. Tämä README kuvaa nykyisen scaffoldin ja miten saat sen pystyyn.
 
