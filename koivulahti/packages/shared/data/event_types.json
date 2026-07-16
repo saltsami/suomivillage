@@ -513,7 +513,7 @@
     ]
   },
   "event_types": {
-    "count": 50,
+    "count": 54,
     "items": [
       {
         "type": "ARRIVAL",
@@ -1082,6 +1082,39 @@
         "payload_schema": { "author": "STRING", "headline": "STRING", "body": "STRING", "source_event_ids": "ARRAY_STRING", "verified": "BOOLEAN" },
         "effects": { "memory_importance_base": 0.3, "relationship_deltas": [], "reputation_delta": 0.0 },
         "render": { "default_channels": [] }
+      },
+
+      {
+        "type": "AMBIENT_WEATHER",
+        "category": "ambient",
+        "description": "Ulkoinen säädata syötetään simulaatioon.",
+        "payload_schema": { "condition": "STRING", "temp_c": "NUMBER", "summary_fi": "STRING", "facts": "ARRAY_STRING" },
+        "effects": { "memory_importance_base": 0.1, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [], "notes": "Ambient events trigger NPC reactions via AMBIENT_SEEN." }
+      },
+      {
+        "type": "AMBIENT_NEWS_HEADLINE",
+        "category": "ambient",
+        "description": "Ulkoinen uutisotsikko syötetään simulaatioon.",
+        "payload_schema": { "headline": "STRING", "summary_fi": "STRING", "facts": "ARRAY_STRING", "category": "STRING" },
+        "effects": { "memory_importance_base": 0.1, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [] }
+      },
+      {
+        "type": "AMBIENT_SPORTS_HEADLINE",
+        "category": "ambient",
+        "description": "Ulkoinen urheiluotsikko syötetään simulaatioon.",
+        "payload_schema": { "headline": "STRING", "summary_fi": "STRING", "facts": "ARRAY_STRING", "category": "STRING" },
+        "effects": { "memory_importance_base": 0.1, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": [] }
+      },
+      {
+        "type": "AMBIENT_SEEN",
+        "category": "ambient",
+        "description": "NPC havaitsee ambient-eventin ja voi reagoida.",
+        "payload_schema": { "ambient_event_id": "STRING", "topic": "STRING", "intensity": "NUMBER_0_1", "sentiment": "NUMBER_-1_1", "summary_fi": "STRING", "facts": "ARRAY_STRING" },
+        "effects": { "memory_importance_base": 0.2, "relationship_deltas": [], "reputation_delta": 0.0 },
+        "render": { "default_channels": ["FEED", "CHAT"], "tone_hint": "reactive" }
       }
     ]
   },

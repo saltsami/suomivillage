@@ -12,6 +12,229 @@ from redis.asyncio import Redis
 from packages.shared.settings import Settings
 
 
+# =============================================================================
+# TEMPLATE SYSTEM FOR DECISION-BASED RENDERING
+# =============================================================================
+
+# Templates by (intent, emotion) -> list of Finnish templates
+# {draft} will be replaced with the translated draft from Decision LLM
+TEMPLATES: Dict[str, Dict[str, list]] = {
+    # Intent templates
+    "spread_info": {
+        "curious": ["Kuulin kanssa... {draft}", "{draft} Tiesittekö?", "Arvatkaa mitä! {draft}"],
+        "happy": ["{draft} Hyviä uutisia!", "Jippii! {draft}"],
+        "neutral": ["{draft}", "Tiedoksi: {draft}"],
+        "default": ["Kuulin että {draft}", "{draft}"],
+    },
+    "agree": {
+        "happy": ["Niin on! {draft}", "Samaa mieltä! {draft}", "Just näin! {draft}"],
+        "neutral": ["Joo. {draft}", "Totta. {draft}"],
+        "amused": ["Haha, niin! {draft}"],
+        "default": ["Samaa mieltä. {draft}", "Niin on. {draft}"],
+    },
+    "disagree": {
+        "annoyed": ["En ole samaa mieltä. {draft}", "Ei se nyt ihan noin mene. {draft}"],
+        "worried": ["Hmm, en tiedä... {draft}"],
+        "neutral": ["Mutta toisaalta... {draft}"],
+        "default": ["No en tiedä. {draft}"],
+    },
+    "joke": {
+        "amused": ["Haha! {draft}", "No jopas! {draft}", "{draft} 😄"],
+        "happy": ["Klassikko! {draft}"],
+        "default": ["{draft}", "No niin... {draft}"],
+    },
+    "worry": {
+        "worried": ["Toivottavasti... {draft}", "Huolestuttaa. {draft}", "Olkaa varovaisia! {draft}"],
+        "neutral": ["{draft}"],
+        "default": ["Hmm. {draft}"],
+    },
+    "practical": {
+        "neutral": ["{draft}", "Näin se menee. {draft}", "Fakta. {draft}"],
+        "proud": ["Tein sen! {draft}"],
+        "default": ["{draft}"],
+    },
+    "emotional": {
+        "happy": ["Ihana! {draft}", "Onnellinen! {draft}"],
+        "sad": ["Harmi. {draft}", "Ikävää. {draft}"],
+        "worried": ["Huolissani. {draft}"],
+        "default": ["{draft}"],
+    },
+    "question": {
+        "curious": ["Kerro lisää! {draft}", "Mitä tarkoitat? {draft}", "{draft}?"],
+        "default": ["{draft}?"],
+    },
+    "neutral": {
+        "neutral": ["{draft}", "Joo. {draft}", "No niin. {draft}"],
+        "default": ["{draft}"],
+    },
+}
+
+# Simple English -> Finnish keyword mapping for drafts
+DRAFT_TRANSLATIONS = {
+    "snow": "lumi",
+    "weather": "sää",
+    "cold": "kylmä",
+    "warm": "lämmin",
+    "rain": "sade",
+    "sun": "aurinko",
+    "work": "työ",
+    "coffee": "kahvi",
+    "cafe": "kahvio",
+    "news": "uutiset",
+    "village": "kylä",
+    "morning": "aamu",
+    "evening": "ilta",
+    "good": "hyvä",
+    "bad": "huono",
+    "nice": "kiva",
+    "beautiful": "kaunis",
+    "interesting": "mielenkiintoinen",
+    "agree": "samaa mieltä",
+    "disagree": "eri mieltä",
+    "worried": "huolissaan",
+    "happy": "iloinen",
+    "sad": "surullinen",
+    "busy": "kiireinen",
+    "quiet": "rauhallinen",
+    "today": "tänään",
+    "tomorrow": "huomenna",
+    "yesterday": "eilen",
+}
+
+
+def translate_draft_simple(draft: str) -> str:
+    """Simple keyword-based translation of English draft to Finnish."""
+    if not draft:
+        return ""
+
+    result = draft.lower()
+    for en, fi in DRAFT_TRANSLATIONS.items():
+        result = result.replace(en.lower(), fi)
+
+    # Capitalize first letter
+    return result[0].upper() + result[1:] if result else ""
+
+
+def select_template(intent: str, emotion: str, rng: random.Random) -> str:
+    """Select a template based on intent and emotion."""
+    intent_templates = TEMPLATES.get(intent, TEMPLATES["neutral"])
+
+    # Try exact emotion match
+    if emotion in intent_templates:
+        return rng.choice(intent_templates[emotion])
+
+    # Fall back to default
+    if "default" in intent_templates:
+        return rng.choice(intent_templates["default"])
+
+    # Last resort
+    return "{draft}"
+
+
+async def process_decision_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process a new-format job from Decision Service.
+    Returns post data ready for persistence.
+    """
+    decision = job.get("decision", {})
+    author_id = job["author_id"]
+    channel = job["channel"]
+    source_event_id = job["source_event_id"]
+
+    intent = decision.get("intent", "neutral")
+    emotion = decision.get("emotion", "neutral")
+    draft_en = decision.get("draft", "")
+
+    # Create deterministic RNG
+    r = rng_for(source_event_id, author_id)
+
+    # Select template and translate draft
+    template = select_template(intent, emotion, r)
+    draft_fi = translate_draft_simple(draft_en)
+
+    # Build raw text from template
+    raw_text = template.format(draft=draft_fi) if draft_fi else template.replace("{draft}", "").strip()
+
+    # Get NPC profile for polish
+    author_profile = None
+    if db_pool:
+        async with db_pool.acquire() as conn:
+            row = await conn.fetchrow("SELECT profile FROM npc_profiles WHERE npc_id=$1", author_id)
+            if row:
+                author_profile = row["profile"]
+                if isinstance(author_profile, str):
+                    author_profile = json.loads(author_profile)
+
+    # Polish with LLM (optional - can be disabled)
+    polished_text = raw_text
+    if author_profile and settings.decision_service_enabled:
+        try:
+            polished_text = await polish_with_llm(raw_text, author_profile, channel)
+        except Exception as e:
+            print(f"[worker] polish failed, using raw: {e}")
+            polished_text = raw_text
+
+    # Map emotion to tone
+    emotion_to_tone = {
+        "happy": "friendly",
+        "amused": "friendly",
+        "curious": "neutral",
+        "neutral": "neutral",
+        "worried": "concerned",
+        "annoyed": "defensive",
+        "sad": "concerned",
+        "proud": "hyped",
+    }
+    tone = emotion_to_tone.get(emotion, "neutral")
+
+    return {
+        "channel": channel,
+        "author_id": author_id,
+        "source_event_id": source_event_id,
+        "tone": tone,
+        "text": polished_text,
+        "tags": [intent],
+        "safety_notes": None,
+        "parent_post_id": job.get("parent_post_id"),
+        "reply_type": job.get("reply_type") or intent,
+    }
+
+
+async def polish_with_llm(draft: str, profile: Dict[str, Any], channel: str) -> str:
+    """Polish draft text with LLM using NPC's voice."""
+    name = profile.get("name", "Kyläläinen")
+    voice = profile.get("voice", {}) or {}
+
+    # Build style description
+    slang = voice.get("slang_level", 0.3)
+    style = "arkinen" if slang > 0.4 else "asiallinen"
+
+    sigs = voice.get("signature_phrases", []) or []
+    sig_hint = f' Voit käyttää: "{sigs[0]}".' if sigs else ""
+
+    prompt = f"""Muotoile tämä teksti luontevammaksi suomeksi {name}n tyylillä.
+Tyyli: {style}, max 2 lausetta, minä-muoto.{sig_hint}
+
+Alkuperäinen: {draft}
+
+Muotoiltu (vain teksti, ei JSON):"""
+
+    payload = {
+        "prompt": prompt,
+        "channel": channel,
+        "author_id": profile.get("id", "npc"),
+        "source_event_id": "polish",
+        "context": {},
+        "temperature": 0.3,
+    }
+
+    response = await http_client.post(f"{settings.llm_gateway_url}/generate", json=payload)
+    response.raise_for_status()
+    result = response.json()
+
+    return result.get("text", draft)
+
+
 # --- Helper functions for deterministic variation and style extraction ---
 
 def rng_for(event_id: str, author_id: str) -> random.Random:
@@ -90,7 +313,34 @@ def event_facts_fi(event: dict) -> str:
     activity = payload.get("activity")
     satisfaction = payload.get("satisfaction")
 
-    parts = [f"paikka={place}"]
+    parts = []
+
+    # Handle AMBIENT_SEEN events specially
+    if t == "AMBIENT_SEEN":
+        ambient_topic = payload.get("topic", "")
+        summary = payload.get("summary_fi", "")
+        facts = payload.get("facts", [])
+        if ambient_topic:
+            parts.append(f"aihe={ambient_topic}")
+        if summary:
+            parts.append(f"tilanne={summary[:60]}")
+        if facts:
+            parts.append(f"faktat=[{', '.join(facts[:2])}]")
+        return ", ".join(parts) if parts else "ambient_event"
+
+    # Handle POST_SEEN events (replies)
+    if t == "POST_SEEN":
+        original_text = payload.get("original_text", "")[:60]
+        author_id = payload.get("author_id", "").replace("npc_", "").capitalize()
+        reply_type = payload.get("reply_type", "neutral")
+        parts.append(f"vastaus_tyyppi={reply_type}")
+        parts.append(f"alkuperäinen_kirjoittaja={author_id}")
+        parts.append(f"alkuperäinen_teksti={original_text}")
+        return ", ".join(parts) if parts else "post_reply"
+
+    # Regular events
+    if place and place != "kylä":
+        parts.append(f"paikka={place}")
 
     if t == "SMALL_TALK" and targets:
         target_name = targets[0].replace("npc_", "").capitalize()
@@ -145,8 +395,12 @@ async def fetch_job() -> Dict[str, Any] | None:
     return json.loads(job_json)
 
 
-def make_draft(channel: str, event: Dict[str, Any], author_id: str) -> str:
+def make_draft(channel: str, event: Dict[str, Any], author_id: str, prompt_context: Dict[str, Any] = None) -> str:
     """Create a deterministic draft with variation based on event."""
+    # Check if ambient draft is provided in prompt_context
+    if prompt_context and prompt_context.get("draft"):
+        return prompt_context["draft"]
+
     event_type = event.get("type", "UNKNOWN")
     event_id = event.get("id", "evt")
     place_id = event.get("place_id", "")
@@ -254,6 +508,46 @@ def make_draft(channel: str, event: Dict[str, Any], author_id: str) -> str:
         ]
         return r.choice(opts).strip()
 
+    # --- AMBIENT_SEEN (fallback if no pre-written draft) ---
+    elif event_type == "AMBIENT_SEEN":
+        summary = payload.get("summary_fi", "")
+        ambient_topic = payload.get("topic", "")
+        if "weather" in ambient_topic:
+            opts = [
+                f"{summary[:50]}",
+                f"Näin säätiedotuksen. {summary[:40]}",
+            ]
+        elif "news" in ambient_topic:
+            opts = [
+                f"Kuulin uutiset. {summary[:40]}",
+                f"Uutisissa kerrottiin... {summary[:40]}",
+            ]
+        else:
+            opts = [f"{summary[:50]}"]
+        return r.choice(opts).strip()
+
+    # --- POST_SEEN (reply to another post) ---
+    elif event_type == "POST_SEEN":
+        # Use draft from engine if provided, otherwise generate fallback
+        if "draft" in payload and payload["draft"]:
+            return payload["draft"]
+        reply_type = payload.get("reply_type", "neutral")
+        original_author = payload.get("author_id", "").replace("npc_", "").capitalize()
+        original_text = payload.get("original_text", "")[:50]
+        if reply_type == "question":
+            opts = [f"@{original_author} Kerro lisää!", f"@{original_author} Mitä tarkoitat?"]
+        elif reply_type in ["agree", "neutral"]:
+            opts = [f"@{original_author} Niin on!", f"@{original_author} Jep."]
+        elif reply_type in ["blame", "solution"]:
+            opts = [f"@{original_author} Totta. Pitäisi tehdä jotain.", f"@{original_author} Sama mieltä."]
+        elif reply_type == "worry":
+            opts = [f"@{original_author} Huolestuttavaa.", f"@{original_author} Toivottavasti menee hyvin."]
+        elif reply_type in ["invite", "joke"]:
+            opts = [f"@{original_author} Mäkin tuun!", f"@{original_author} Haha!"]
+        else:
+            opts = [f"@{original_author} Joo.", f"@{original_author} Näin on."]
+        return r.choice(opts).strip()
+
     # --- Fallback ---
     else:
         if channel == "FEED":
@@ -262,9 +556,10 @@ def make_draft(channel: str, event: Dict[str, Any], author_id: str) -> str:
             return f"Oon {place_fi}. {mood_str if mood else 'Mitäs?'}"
 
 
-def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, Any] | None) -> str:
+def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, Any] | None, prompt_context: Dict[str, Any] = None) -> str:
     """Build draft-based prompt using style helpers - LLM rewrites draft in character voice."""
     author_id = (author_profile or {}).get("id", "npc")
+    prompt_context = prompt_context or {}
 
     # Get style instructions from profile (handles dict voice properly)
     style = style_from_profile(author_profile, channel, event)
@@ -272,8 +567,15 @@ def build_prompt(channel: str, event: Dict[str, Any], author_profile: Dict[str, 
     # Get facts from event payload
     facts = event_facts_fi(event)
 
-    # Create deterministic draft
-    draft = make_draft(channel, event, author_id)
+    # For ambient events, add ambient-specific facts
+    if prompt_context.get("ambient_topic"):
+        ambient_payload = prompt_context.get("ambient_payload", {})
+        ambient_facts = ambient_payload.get("facts", [])
+        if ambient_facts:
+            facts += f", ambient_faktat=[{', '.join(ambient_facts)}]"
+
+    # Create deterministic draft (uses ambient draft if provided)
+    draft = make_draft(channel, event, author_id, prompt_context)
 
     if channel == "NEWS":
         return (
@@ -311,7 +613,7 @@ async def call_gateway(job: Dict[str, Any]) -> Dict[str, Any]:
     # Use catalog-based prompt building
     prompt = summary
     if event:
-        prompt = build_prompt(job["channel"], event, author_profile)
+        prompt = build_prompt(job["channel"], event, author_profile, prompt_context)
 
     payload = {
         "prompt": prompt,
@@ -331,8 +633,8 @@ async def persist_post(data: Dict[str, Any]) -> None:
     async with db_pool.acquire() as conn:
         await conn.execute(
             """
-            INSERT INTO posts (channel, author_id, source_event_id, tone, text, tags, safety_notes)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            INSERT INTO posts (channel, author_id, source_event_id, tone, text, tags, safety_notes, parent_post_id, reply_type)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
             """,
             data["channel"],
             data["author_id"],
@@ -341,6 +643,8 @@ async def persist_post(data: Dict[str, Any]) -> None:
             data["text"],
             json.dumps(data.get("tags", [])),
             data.get("safety_notes"),
+            data.get("parent_post_id"),  # NULL for non-replies
+            data.get("reply_type"),  # NULL for non-replies
         )
 
 
@@ -350,8 +654,30 @@ async def process_once() -> None:
     # Debug logging for author_id tracking
     job_author = job.get("author_id", "MISSING")
     job_channel = job.get("channel", "UNKNOWN")
-    job_event = job.get("source_event_id", "UNKNOWN")
-    print(f"[worker] processing: author={job_author}, channel={job_channel}, event={job_event}")
+    job_event = job.get("source_event_id", job.get("event_id", "UNKNOWN"))
+
+    # Check if this is a new-format job (from Decision Service)
+    is_decision_job = "decision" in job and isinstance(job.get("decision"), dict)
+
+    if is_decision_job:
+        print(f"[worker] processing decision job: author={job_author}, channel={job_channel}")
+
+        try:
+            generated = await process_decision_job(job)
+            await persist_post(generated)
+            print(f"[worker] stored (decision): author={job_author}, event={job_event}")
+        except Exception as e:
+            print(f"[worker] ERROR processing decision job: {e}")
+            import traceback
+            traceback.print_exc()
+        return
+
+    # Legacy job format (from old engine behavior)
+    print(f"[worker] processing legacy job: author={job_author}, channel={job_channel}, event={job_event}")
+
+    # Normalize event_id to source_event_id (engine uses event_id for POST_SEEN jobs)
+    if "event_id" in job and "source_event_id" not in job:
+        job["source_event_id"] = job["event_id"]
 
     generated = await call_gateway(job)
 
@@ -360,8 +686,14 @@ async def process_once() -> None:
     if job_author != gen_author:
         print(f"[worker] WARNING: author_id mismatch! job={job_author} vs generated={gen_author}")
 
+    # Merge reply fields from job (gateway doesn't know about these)
+    if job.get("parent_post_id"):
+        generated["parent_post_id"] = job["parent_post_id"]
+    if job.get("reply_type"):
+        generated["reply_type"] = job["reply_type"]
+
     await persist_post(generated)
-    print(f"[worker] stored: author={gen_author}, event={generated['source_event_id']}")
+    print(f"[worker] stored (legacy): author={gen_author}, event={generated['source_event_id']}")
 
 
 async def main() -> None:

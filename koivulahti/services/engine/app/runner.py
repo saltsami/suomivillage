@@ -1,12 +1,19 @@
 import asyncio
+import hashlib
 import json
 import random
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
+from uuid import uuid4
 
 import asyncpg
 from redis.asyncio import Redis
 
+from packages.shared.archetype_mapping import (
+    ARCHETYPE_MAPPING,
+    APPRAISAL_ARCHETYPES,
+    get_appraisal_archetype,
+)
 from packages.shared.data_loader import (
     get_day1_seed_events,
     get_event_types,
@@ -366,6 +373,49 @@ async def enqueue_render_jobs(
         await redis_client.lpush(settings.render_queue, json.dumps(job))
 
 
+async def enqueue_decision_job(
+    npc_id: str,
+    event: Dict[str, Any],
+    sim_ts: datetime,
+) -> str:
+    """
+    Enqueue a decision job to the Decision Service.
+    Returns the job_id.
+    """
+    assert redis_client is not None
+
+    job_id = f"decision_{uuid4().hex[:8]}"
+    payload = event.get("payload", {})
+
+    # Build stimulus from event
+    stimulus = {
+        "event_id": event["id"],
+        "event_type": event["type"],
+        "payload": payload,
+        "actors": event.get("actors", []),
+        "targets": event.get("targets", []),
+    }
+
+    # Add type-specific fields
+    if event["type"] == "POST_SEEN":
+        stimulus["original_text"] = payload.get("original_text", "")
+        stimulus["original_author"] = payload.get("author_id", "")
+        stimulus["channel"] = payload.get("channel", "CHAT")
+    elif event["type"] == "AMBIENT_SEEN":
+        stimulus["topic"] = payload.get("topic", "")
+        stimulus["summary_fi"] = payload.get("summary_fi", "")
+
+    job = {
+        "job_id": job_id,
+        "npc_id": npc_id,
+        "stimulus": stimulus,
+        "created_at": sim_ts.isoformat(),
+    }
+
+    await redis_client.lpush(settings.decision_queue, json.dumps(job))
+    return job_id
+
+
 async def process_event(
     event: Dict[str, Any],
     event_types: Dict[str, EventTypeItem],
@@ -485,6 +535,319 @@ PAYLOAD_OPTIONS = {
 }
 
 
+# --- Ambient Event Distributor & Appraisal ---
+
+# Visibility percentage for ambient event delivery (hash-based determinism)
+DEFAULT_VISIBILITY_PCT = 60  # 60% of NPCs will "see" each ambient event
+
+# Appraisal matrix: topic pattern -> archetype -> (intent, draft_template)
+# Intents: POST_FEED, POST_CHAT, IGNORE, REPLY
+APPRAISAL_MATRIX: Dict[str, Dict[str, tuple]] = {
+    "weather_snow": {
+        "romantic": ("POST_FEED", "Lunta sataa. Onpa kaunista ulkona."),
+        "practical": ("POST_FEED", "Ja taas lumityöt. Ei voi mitään."),
+        "anxious": ("POST_CHAT", "Liukasta on. Varokaa teillä!"),
+        "stoic": ("IGNORE", None),
+        "gossip": ("POST_CHAT", "Kuulin että lumimyrsky tulossa? Mitäs muut?"),
+        "social": ("POST_CHAT", "Lunta sataa! Kuka lähtee pulkkamäkeen?"),
+        "political": ("POST_FEED", "Taas lumityöt myöhässä. Kunnan pitäis hoitaa."),
+        "default": ("POST_FEED", "Lunta sataa. Talvi täällä."),
+    },
+    "weather_rain": {
+        "romantic": ("POST_FEED", "Sade on melankolista. Kaunista silti."),
+        "practical": ("POST_FEED", "Vesisadetta. Sateenvarjo mukaan."),
+        "anxious": ("POST_CHAT", "Vettä tulee. Onkohan kaikilla kumisaappaat?"),
+        "stoic": ("IGNORE", None),
+        "social": ("POST_CHAT", "Sataa! Tuleeko kukaan kahville sisälle?"),
+        "gossip": ("POST_CHAT", "Onpas kaatosadetta. Oliko kellään kastuneet vaatteet?"),
+        "political": ("POST_FEED", "Taas sataa. Ilmastonmuutos tekee tehtävänsä."),
+        "default": ("POST_FEED", "Sataa vettä. Normaali päivä."),
+    },
+    "weather_sunny": {
+        "romantic": ("POST_FEED", "Aurinko paistaa! Kaunis päivä edessä."),
+        "practical": ("POST_FEED", "Hyvä keli. Hommiin vaan."),
+        "social": ("POST_CHAT", "Onpa keli! Mennäänkö ulos?"),
+        "stoic": ("IGNORE", None),
+        "default": ("POST_FEED", "Aurinkoista. Hyvä päivä."),
+    },
+    "weather_storm": {
+        "anxious": ("POST_CHAT", "Myrsky tulossa! Olkaa varovaisia!"),
+        "practical": ("POST_FEED", "Myrsky lähestyy. Kannattaa pysyä sisällä."),
+        "stoic": ("POST_FEED", "Myrsky menee ohi. Ei hätää."),
+        "default": ("POST_FEED", "Myrsky tulossa. Varautukaa."),
+    },
+    "news_suomi": {
+        "political": ("POST_FEED", "Taas näitä päätöksiä. Mitähän seuraavaksi."),
+        "gossip": ("POST_CHAT", "Kuulitteko uutiset? Mitä mieltä olette?"),
+        "anxious": ("POST_CHAT", "Huolestuttavia uutisia. Toivottavasti menee hyvin."),
+        "stoic": ("IGNORE", None),
+        "default": ("IGNORE", None),
+    },
+    "news_talous": {
+        "practical": ("POST_FEED", "Talous taas otsikoissa. Katsotaan miten käy."),
+        "anxious": ("POST_CHAT", "Hinnat nousee. Miten te selviätte?"),
+        "stoic": ("IGNORE", None),
+        "default": ("IGNORE", None),
+    },
+    "news_paikallinen": {
+        "social": ("POST_FEED", "Kuulin paikallisia uutisia. Mielenkiintoista!"),
+        "gossip": ("POST_CHAT", "Arvatkaa mitä kuulin! Kylällä tapahtuu."),
+        "default": ("POST_FEED", "Paikkakunnalla tapahtuu."),
+    },
+    "sports_jääkiekko": {
+        "social": ("POST_FEED", "Leijonat pelasi! Hyvä Suomi!"),
+        "stoic": ("IGNORE", None),
+        "default": ("POST_CHAT", "Näittekö pelin? Meni hyvin!"),
+    },
+    "sports_jalkapallo": {
+        "social": ("POST_CHAT", "Hyvä peli! Mitä tykkäsitte?"),
+        "default": ("IGNORE", None),
+    },
+}
+
+# NPC post cooldowns (in-memory, reset on restart)
+# Structure: {npc_id: {channel: last_post_datetime}}
+_npc_cooldowns: Dict[str, Dict[str, datetime]] = {}
+
+# Cooldown durations per channel (seconds)
+COOLDOWN_SECONDS = {
+    "FEED": 7200,   # 2 hours
+    "CHAT": 1800,   # 30 min
+    "NEWS": 86400,  # 1 day
+}
+
+
+def should_deliver_ambient(ambient_id: str, npc_id: str, visibility_pct: int = DEFAULT_VISIBILITY_PCT) -> bool:
+    """Deterministic check if NPC should 'see' this ambient event."""
+    h = hashlib.sha256(f"{ambient_id}:{npc_id}".encode()).hexdigest()
+    return (int(h[:8], 16) % 100) < visibility_pct
+
+
+def get_npc_archetype(npc_profile: Dict[str, Any]) -> str:
+    """Extract primary archetype from NPC profile and map to appraisal archetype."""
+    archetypes = npc_profile.get("archetypes", [])
+    npc_id = npc_profile.get("id", "?")
+    return get_appraisal_archetype(archetypes, npc_id)
+
+
+def appraise_ambient(topic: str, npc_profile: Dict[str, Any]) -> tuple:
+    """Determine NPC's intent based on topic and personality. Returns (intent, draft)."""
+    archetype = get_npc_archetype(npc_profile)
+
+    # Try exact topic match first
+    if topic in APPRAISAL_MATRIX:
+        topic_responses = APPRAISAL_MATRIX[topic]
+        if archetype in topic_responses:
+            return topic_responses[archetype]
+        if "default" in topic_responses:
+            return topic_responses["default"]
+
+    # Try prefix match (e.g., "weather_" for any weather)
+    for pattern, responses in APPRAISAL_MATRIX.items():
+        if topic.startswith(pattern.rsplit("_", 1)[0] + "_"):
+            if archetype in responses:
+                return responses[archetype]
+            if "default" in responses:
+                return responses["default"]
+
+    return ("IGNORE", None)
+
+
+def check_cooldown(npc_id: str, channel: str, now: datetime) -> bool:
+    """Check if NPC can post to channel (not in cooldown). Returns True if allowed."""
+    if npc_id not in _npc_cooldowns:
+        return True
+    if channel not in _npc_cooldowns[npc_id]:
+        return True
+
+    last_post = _npc_cooldowns[npc_id][channel]
+    cooldown = COOLDOWN_SECONDS.get(channel, 3600)
+    return (now - last_post).total_seconds() >= cooldown
+
+
+def update_cooldown(npc_id: str, channel: str, now: datetime) -> None:
+    """Record that NPC posted to channel."""
+    if npc_id not in _npc_cooldowns:
+        _npc_cooldowns[npc_id] = {}
+    _npc_cooldowns[npc_id][channel] = now
+
+
+async def fetch_undistributed_ambient_events(conn: asyncpg.Connection) -> List[Dict[str, Any]]:
+    """Fetch ambient events that haven't expired and haven't been fully distributed."""
+    rows = await conn.fetch(
+        """
+        SELECT ae.id, ae.sim_date, ae.type, ae.topic, ae.intensity, ae.sentiment,
+               ae.confidence, ae.expires_at, ae.payload
+        FROM ambient_events ae
+        WHERE (ae.expires_at IS NULL OR ae.expires_at > now())
+        ORDER BY ae.created_at ASC
+        LIMIT 10
+        """
+    )
+    return [dict(r) for r in rows]
+
+
+async def check_already_delivered(conn: asyncpg.Connection, ambient_id: str, npc_id: str) -> bool:
+    """Check if ambient event was already delivered to this NPC."""
+    row = await conn.fetchrow(
+        "SELECT 1 FROM ambient_deliveries WHERE ambient_event_id=$1 AND npc_id=$2",
+        ambient_id, npc_id
+    )
+    return row is not None
+
+
+async def record_delivery(conn: asyncpg.Connection, ambient_id: str, npc_id: str) -> None:
+    """Record that ambient event was delivered to NPC."""
+    await conn.execute(
+        """INSERT INTO ambient_deliveries (ambient_event_id, npc_id)
+           VALUES ($1, $2) ON CONFLICT DO NOTHING""",
+        ambient_id, npc_id
+    )
+
+
+async def create_ambient_seen_event(
+    conn: asyncpg.Connection,
+    ambient_event: Dict[str, Any],
+    npc_id: str,
+    sim_ts: datetime,
+) -> Dict[str, Any]:
+    """Create AMBIENT_SEEN event for NPC in events table."""
+    ambient_id = ambient_event["id"]
+    event_id = f"evt_ambient_seen_{ambient_id}_{npc_id}"
+
+    payload = {
+        "ambient_event_id": ambient_id,
+        "topic": ambient_event["topic"],
+        "intensity": ambient_event["intensity"],
+        "sentiment": ambient_event["sentiment"],
+        "summary_fi": ambient_event["payload"].get("summary_fi", ""),
+        "facts": ambient_event["payload"].get("facts", []),
+    }
+
+    event = {
+        "id": event_id,
+        "type": "AMBIENT_SEEN",
+        "place_id": None,
+        "actors": [npc_id],
+        "targets": [],
+        "publicness": 0.0,  # Internal event, not public
+        "severity": ambient_event["intensity"] * 0.3,
+        "ts_local": sim_ts.isoformat(),
+        "payload": payload,
+    }
+
+    # Insert event (idempotent)
+    await conn.execute(
+        """
+        INSERT INTO events (id, sim_ts, place_id, type, actors, targets, publicness, severity, payload)
+        VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9::jsonb)
+        ON CONFLICT (id) DO NOTHING
+        """,
+        event_id,
+        sim_ts,
+        None,
+        "AMBIENT_SEEN",
+        json.dumps([npc_id]),
+        json.dumps([]),
+        0.0,
+        event["severity"],
+        json.dumps(payload),
+    )
+
+    return event
+
+
+async def distribute_ambient_events(sim_ts: datetime) -> int:
+    """
+    Distribute ambient events to NPCs and generate reactions.
+    Returns count of render jobs enqueued.
+    """
+    assert db_pool is not None
+    assert redis_client is not None
+
+    npcs = get_npc_profiles()
+    if not npcs:
+        return 0
+
+    jobs_enqueued = 0
+
+    async with db_pool.acquire() as conn:
+        ambient_events = await fetch_undistributed_ambient_events(conn)
+        if not ambient_events:
+            return 0
+
+        for ae in ambient_events:
+            ambient_id = ae["id"]
+            topic = ae["topic"]
+            payload = ae["payload"] if isinstance(ae["payload"], dict) else json.loads(ae["payload"])
+            ae["payload"] = payload  # Ensure dict
+
+            for npc in npcs:
+                npc_id = npc.id
+
+                # Skip if already delivered
+                if await check_already_delivered(conn, ambient_id, npc_id):
+                    continue
+
+                # Deterministic visibility check
+                if not should_deliver_ambient(ambient_id, npc_id):
+                    # Mark as "delivered" (with no action) to prevent re-processing
+                    await record_delivery(conn, ambient_id, npc_id)
+                    continue
+
+                # Create AMBIENT_SEEN event
+                seen_event = await create_ambient_seen_event(conn, ae, npc_id, sim_ts)
+
+                # Record delivery
+                await record_delivery(conn, ambient_id, npc_id)
+
+                # Enqueue decision job - let Decision Service decide what to do
+                if settings.decision_service_enabled:
+                    job_id = await enqueue_decision_job(npc_id, seen_event, sim_ts)
+                    jobs_enqueued += 1
+                    print(f"[engine] ambient decision: {npc_id} -> decision_job {job_id} on {topic}")
+                else:
+                    # Fallback: old behavior (appraise locally)
+                    profile_row = await conn.fetchrow(
+                        "SELECT profile FROM npc_profiles WHERE npc_id=$1", npc_id
+                    )
+                    npc_profile = {}
+                    if profile_row:
+                        prof = profile_row["profile"]
+                        npc_profile = json.loads(prof) if isinstance(prof, str) else prof
+
+                    intent, draft = appraise_ambient(topic, npc_profile)
+
+                    if intent == "IGNORE" or not draft:
+                        continue
+
+                    channel = "FEED" if intent == "POST_FEED" else "CHAT"
+
+                    if not check_cooldown(npc_id, channel, sim_ts):
+                        continue
+
+                    job = {
+                        "channel": channel,
+                        "author_id": npc_id,
+                        "source_event_id": seen_event["id"],
+                        "prompt_context": {
+                            "summary": f"Reaction to {topic}: {payload.get('summary_fi', '')}",
+                            "event": seen_event,
+                            "ambient_topic": topic,
+                            "ambient_payload": payload,
+                            "draft": draft,
+                            "impact": ae["intensity"],
+                            "sim_ts": sim_ts.isoformat(),
+                        },
+                    }
+                    await redis_client.lpush(settings.render_queue, json.dumps(job))
+                    update_cooldown(npc_id, channel, sim_ts)
+                    jobs_enqueued += 1
+                    print(f"[engine] ambient reaction: {npc_id} -> {intent} on {topic}")
+
+    return jobs_enqueued
+
+
 def build_rich_payload(event_type: str, rng: random.Random, npcs: list) -> Dict[str, Any]:
     """Build rich payload with content for the event type."""
     payload: Dict[str, Any] = {"source": "routine_injector"}
@@ -572,6 +935,287 @@ async def generate_routine_event(
     }
 
 
+# =============================================================================
+# POST CHAIN REACTIONS
+# =============================================================================
+
+# Reply probability by archetype (base chance to reply when seeing a post)
+REPLY_PROBABILITY: Dict[str, float] = {
+    "gossip": 0.60,
+    "social": 0.50,
+    "political": 0.40,
+    "anxious": 0.35,
+    "romantic": 0.30,
+    "practical": 0.20,
+    "stoic": 0.05,
+    "default": 0.15,
+}
+
+# Reply templates by archetype and type
+REPLY_TEMPLATES: Dict[str, Dict[str, list]] = {
+    "gossip": {
+        "question": ["Kuulin kanssa... Tiedätkö lisää?", "Mitäs muut on mieltä?", "Onko tämä varmaa?"],
+        "spread": ["Joo tämähän on juttu!", "Pitääpä kertoa muillekin.", "No nyt!"],
+    },
+    "social": {
+        "invite": ["Mäkin tuun!", "Lähdetäänkö yhdessä?", "Ketä muita tulee?"],
+        "joke": ["Haha klassikko!", "No jopas!", "Tämä on hyvä!"],
+    },
+    "political": {
+        "blame": ["Tämäkin on kunnan vika.", "Taas sama meno.", "Kuka tästä vastaa?"],
+        "solution": ["Pitäisi tehdä jotain.", "Meidän pitäis puhua tästä porukalla."],
+    },
+    "anxious": {
+        "worry": ["Toivottavasti ei käy huonosti...", "Olkaa varovaisia!", "Tästä voi tulla ongelma."],
+    },
+    "romantic": {
+        "agree": ["Niin kaunista!", "Täysin samaa mieltä.", "Ihana ajatus."],
+    },
+    "practical": {
+        "solution": ["Kannattaa varautua.", "Näin se menee.", "Asia selvä."],
+    },
+    "stoic": {
+        "neutral": ["Joo.", "Niin.", "Katsotaan."],
+    },
+    "default": {
+        "neutral": ["Joo näin on.", "Katsotaan.", "No niin."],
+    },
+}
+
+
+def should_see_post(post_id: int, npc_id: str, author_id: str, archetype: str, channel: str) -> bool:
+    """Deterministic check if NPC should see this post."""
+    # Never see your own posts
+    if npc_id == author_id:
+        return False
+
+    # Base visibility
+    base = 0.40
+
+    # Channel modifier (CHAT is more targeted)
+    if channel == "CHAT":
+        base += 0.15
+
+    # Archetype modifier (gossip/social see more)
+    if archetype in ["gossip", "social"]:
+        base += 0.20
+    elif archetype == "stoic":
+        base -= 0.15
+
+    # Deterministic hash check
+    h = hashlib.sha256(f"{post_id}:{npc_id}".encode()).hexdigest()
+    return (int(h[:8], 16) % 100) < (base * 100)
+
+
+def should_reply(post_id: int, npc_id: str, archetype: str) -> bool:
+    """Deterministic check if NPC should reply to this post."""
+    prob = REPLY_PROBABILITY.get(archetype, REPLY_PROBABILITY["default"])
+
+    # Deterministic hash check
+    h = hashlib.sha256(f"reply:{post_id}:{npc_id}".encode()).hexdigest()
+    return (int(h[:8], 16) % 100) < (prob * 100)
+
+
+def generate_reply_draft(archetype: str, post_id: int, npc_id: str) -> tuple:
+    """Generate a reply draft based on archetype. Returns (reply_type, draft)."""
+    templates = REPLY_TEMPLATES.get(archetype, REPLY_TEMPLATES["default"])
+
+    # Deterministic selection using hash
+    h = hashlib.sha256(f"draft:{post_id}:{npc_id}".encode()).hexdigest()
+    seed = int(h[:8], 16)
+
+    reply_types = list(templates.keys())
+    reply_type = reply_types[seed % len(reply_types)]
+
+    options = templates[reply_type]
+    draft = options[seed % len(options)]
+
+    return reply_type, draft
+
+
+async def fetch_undelivered_posts(conn, max_age_hours: int = 2) -> list:
+    """Fetch posts that haven't been fully distributed yet."""
+    return await conn.fetch(
+        """
+        SELECT p.id, p.author_id, p.channel, p.text, p.created_at, p.parent_post_id
+        FROM posts p
+        WHERE p.created_at > NOW() - make_interval(hours => $1)
+          AND p.parent_post_id IS NULL  -- Only original posts, not replies
+          AND NOT EXISTS (
+              SELECT 1 FROM post_deliveries pd
+              WHERE pd.post_id = p.id
+              LIMIT 1
+          )
+        ORDER BY p.created_at ASC
+        LIMIT 10
+        """,
+        max_age_hours,
+    )
+
+
+async def record_post_delivery(conn, post_id: int, npc_id: str, replied: bool = False) -> None:
+    """Record that an NPC has seen a post."""
+    await conn.execute(
+        """
+        INSERT INTO post_deliveries (post_id, npc_id, replied)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (post_id, npc_id) DO UPDATE SET replied = EXCLUDED.replied OR post_deliveries.replied
+        """,
+        post_id,
+        npc_id,
+        replied,
+    )
+
+
+async def get_reply_depth(conn, post_id: int) -> int:
+    """Get depth of reply chain (0 for original posts)."""
+    depth = 0
+    current_id = post_id
+    while current_id:
+        row = await conn.fetchrow(
+            "SELECT parent_post_id FROM posts WHERE id = $1", current_id
+        )
+        if not row or not row["parent_post_id"]:
+            break
+        current_id = row["parent_post_id"]
+        depth += 1
+        if depth > 5:  # Safety limit
+            break
+    return depth
+
+
+async def distribute_post_visibility(sim_ts: datetime) -> int:
+    """
+    Distribute posts to NPCs and generate reply reactions.
+    Returns count of reply jobs enqueued.
+    """
+    assert db_pool is not None
+    assert redis_client is not None
+
+    npcs = get_npc_profiles()
+    if not npcs:
+        return 0
+
+    jobs_enqueued = 0
+
+    async with db_pool.acquire() as conn:
+        posts = await fetch_undelivered_posts(conn)
+        if not posts:
+            return 0
+
+        for post in posts:
+            post_id = post["id"]
+            author_id = post["author_id"]
+            channel = post["channel"]
+            text = post["text"]
+
+            # Check reply depth - limit to 3 levels
+            depth = await get_reply_depth(conn, post_id)
+            if depth >= 3:
+                # Mark as delivered but don't generate replies
+                for npc in npcs:
+                    await record_post_delivery(conn, post_id, npc.id, False)
+                continue
+
+            for npc in npcs:
+                npc_id = npc.id
+
+                # Skip own posts
+                if npc_id == author_id:
+                    await record_post_delivery(conn, post_id, npc_id, False)
+                    continue
+
+                # Deterministic visibility check (keep simple hash-based filtering)
+                h = hashlib.sha256(f"{post_id}:{npc_id}".encode()).hexdigest()
+                base_visibility = 0.50  # 50% see any post
+                if (int(h[:8], 16) % 100) >= (base_visibility * 100):
+                    await record_post_delivery(conn, post_id, npc_id, False)
+                    continue
+
+                # Create POST_SEEN event
+                event_id = f"evt_post_seen_{post_id}_{npc_id}"
+
+                event = {
+                    "id": event_id,
+                    "type": "POST_SEEN",
+                    "place_id": None,
+                    "actors": [npc_id],
+                    "targets": [author_id],
+                    "publicness": 0.3,
+                    "severity": 0.2,
+                    "ts_local": sim_ts.isoformat(),
+                    "payload": {
+                        "post_id": post_id,
+                        "author_id": author_id,
+                        "channel": channel,
+                        "original_text": text[:200],
+                        "parent_post_id": post_id,
+                    },
+                }
+
+                # Insert event
+                await conn.execute(
+                    """
+                    INSERT INTO events (id, sim_ts, place_id, type, actors, targets, publicness, severity, payload)
+                    VALUES ($1, $2, $3, $4, $5::jsonb, $6::jsonb, $7, $8, $9::jsonb)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    event_id,
+                    sim_ts,
+                    None,
+                    "POST_SEEN",
+                    json.dumps([npc_id]),
+                    json.dumps([author_id]),
+                    0.3,
+                    0.2,
+                    json.dumps(event["payload"]),
+                )
+
+                # Record delivery
+                await record_post_delivery(conn, post_id, npc_id, False)
+
+                # Enqueue decision job - let Decision Service decide whether to reply
+                if settings.decision_service_enabled:
+                    job_id = await enqueue_decision_job(npc_id, event, sim_ts)
+                    jobs_enqueued += 1
+                    print(f"[engine] post decision: {npc_id} -> decision_job {job_id} on post {post_id}")
+                else:
+                    # Fallback: old behavior
+                    profile_row = await conn.fetchrow(
+                        "SELECT profile FROM npc_profiles WHERE npc_id=$1", npc_id
+                    )
+                    npc_profile = {}
+                    if profile_row:
+                        prof = profile_row["profile"]
+                        npc_profile = json.loads(prof) if isinstance(prof, str) else prof
+
+                    archetype = get_npc_archetype(npc_profile)
+
+                    if not should_reply(post_id, npc_id, archetype):
+                        continue
+
+                    now = datetime.now(tz=timezone.utc)
+                    if not check_cooldown(npc_id, channel, now):
+                        continue
+
+                    reply_type, draft = generate_reply_draft(archetype, post_id, npc_id)
+
+                    job = {
+                        "event_id": event_id,
+                        "author_id": npc_id,
+                        "channel": channel,
+                        "draft": draft,
+                        "reply_type": reply_type,
+                        "parent_post_id": post_id,
+                    }
+                    await redis_client.rpush(settings.render_queue, json.dumps(job))
+                    update_cooldown(npc_id, channel, now)
+                    jobs_enqueued += 1
+                    print(f"[engine] post reaction: {npc_id} -> REPLY ({reply_type}) on post {post_id}")
+
+    return jobs_enqueued
+
+
 async def tick_once(
     sim_ts: datetime,
     tick_index: int,
@@ -586,11 +1230,44 @@ async def tick_once(
                 routine_event, event_types
             )
             if inserted:
-                await enqueue_render_jobs(routine_event, event_sim_ts, impact, event_type)
-                print(
-                    f"[engine] injected {routine_event['id']} "
-                    f"({routine_event['type']}) impact={impact:.2f}"
-                )
+                # Get the actor NPC for decision
+                actors = routine_event.get("actors", [])
+                if actors and settings.decision_service_enabled:
+                    npc_id = actors[0]
+                    job_id = await enqueue_decision_job(npc_id, routine_event, event_sim_ts)
+                    print(
+                        f"[engine] routine decision: {routine_event['id']} "
+                        f"({routine_event['type']}) -> decision_job {job_id}"
+                    )
+                else:
+                    # Fallback: old behavior (direct render)
+                    await enqueue_render_jobs(routine_event, event_sim_ts, impact, event_type)
+                    print(
+                        f"[engine] injected {routine_event['id']} "
+                        f"({routine_event['type']}) impact={impact:.2f}"
+                    )
+
+    # Distribute ambient events every 30 ticks (~30 seconds)
+    if tick_index > 0 and tick_index % 30 == 0:
+        try:
+            ambient_jobs = await distribute_ambient_events(sim_ts)
+            if ambient_jobs > 0:
+                print(f"[engine] distributed ambient events, enqueued {ambient_jobs} reactions")
+        except Exception as e:
+            # Don't crash the tick loop if ambient tables don't exist yet
+            if "ambient_events" not in str(e):
+                print(f"[engine] ambient distribution error: {e}")
+
+    # Distribute post visibility every 20 ticks (~20 seconds)
+    if tick_index > 0 and tick_index % 20 == 0:
+        try:
+            post_jobs = await distribute_post_visibility(sim_ts)
+            if post_jobs > 0:
+                print(f"[engine] distributed post visibility, enqueued {post_jobs} replies")
+        except Exception as e:
+            # Don't crash the tick loop if post tables don't exist yet
+            if "post_deliveries" not in str(e):
+                print(f"[engine] post distribution error: {e}")
 
     if tick_index % 60 == 0:
         print(f"[engine] tick {tick_index} sim_ts={sim_ts.isoformat()}")
