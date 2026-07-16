@@ -1,0 +1,1140 @@
+<!doctype html>
+<html lang="fi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Suomivillage / Koivulahti · Viability Audit 2026</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=Newsreader:opsz,wght@6..72,500;6..72,650;6..72,750&display=swap" rel="stylesheet">
+<style>
+:root {
+  --font-display: 'Newsreader', Georgia, serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+  --bg: #f1eee5;
+  --paper: #fbf9f2;
+  --paper-2: #e9e5da;
+  --ink: #17221e;
+  --muted: #6f756f;
+  --line: rgba(23,34,30,.14);
+  --line-strong: rgba(23,34,30,.28);
+  --pine: #164f42;
+  --pine-soft: rgba(22,79,66,.10);
+  --rust: #ad3b2d;
+  --rust-soft: rgba(173,59,45,.10);
+  --amber: #a66c08;
+  --amber-soft: rgba(166,108,8,.11);
+  --blue: #2e6173;
+  --blue-soft: rgba(46,97,115,.10);
+  --shadow: 0 18px 50px rgba(35,40,34,.08);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121714;
+    --paper: #19211d;
+    --paper-2: #222c27;
+    --ink: #edf1e9;
+    --muted: #aab2aa;
+    --line: rgba(237,241,233,.11);
+    --line-strong: rgba(237,241,233,.22);
+    --pine: #72c4a9;
+    --pine-soft: rgba(114,196,169,.12);
+    --rust: #f08775;
+    --rust-soft: rgba(240,135,117,.12);
+    --amber: #e4b557;
+    --amber-soft: rgba(228,181,87,.12);
+    --blue: #8dc1d4;
+    --blue-soft: rgba(141,193,212,.12);
+    --shadow: 0 20px 60px rgba(0,0,0,.24);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-body);
+  line-height: 1.65;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(90deg, transparent 0, transparent calc(50% - .5px), rgba(23,34,30,.035) 50%, transparent calc(50% + .5px)),
+    radial-gradient(circle at 12% 6%, var(--pine-soft), transparent 28%),
+    radial-gradient(circle at 88% 18%, var(--rust-soft), transparent 24%);
+  overflow-wrap: break-word;
+}
+a { color: var(--pine); text-underline-offset: 3px; }
+.wrap {
+  max-width: 1480px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: 205px minmax(0, 1fr);
+  gap: 0 46px;
+  padding: 0 46px 90px;
+}
+.main { min-width: 0; }
+.toc {
+  position: sticky;
+  top: 22px;
+  align-self: start;
+  grid-row: 1 / -1;
+  max-height: calc(100dvh - 44px);
+  overflow: auto;
+  padding: 24px 0 18px;
+  scrollbar-width: thin;
+}
+.toc-title {
+  font: 600 9px/1.2 var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+  margin-bottom: 10px;
+}
+.toc a {
+  display: grid;
+  grid-template-columns: 24px minmax(0,1fr);
+  gap: 7px;
+  align-items: baseline;
+  padding: 5px 8px;
+  margin: 1px 0;
+  color: var(--muted);
+  text-decoration: none;
+  border-left: 2px solid transparent;
+  border-radius: 0 4px 4px 0;
+  font-size: 11px;
+  line-height: 1.35;
+  transition: color .15s, background .15s, border-color .15s;
+}
+.toc a span { font: 500 9px var(--font-mono); opacity: .65; }
+.toc a:hover { color: var(--ink); background: var(--paper-2); }
+.toc a.active { color: var(--ink); border-left-color: var(--rust); background: var(--rust-soft); }
+.hero {
+  margin: 0 -4px 38px;
+  padding: 38px 42px 40px;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-top: 7px solid var(--pine);
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+.hero::after {
+  content: 'KV / 01';
+  position: absolute;
+  right: -13px;
+  bottom: -42px;
+  font: 750 130px/.8 var(--font-display);
+  color: var(--pine-soft);
+  letter-spacing: -8px;
+  pointer-events: none;
+}
+.folio {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  color: var(--muted);
+  font: 600 10px var(--font-mono);
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 13px;
+  margin-bottom: 32px;
+}
+.hero-grid { display: grid; grid-template-columns: minmax(0,1.5fr) minmax(260px,.7fr); gap: 40px; align-items: end; position: relative; z-index: 1; }
+h1 { font: 650 clamp(47px, 7vw, 92px)/.89 var(--font-display); letter-spacing: -3px; margin: 0 0 22px; max-width: 850px; }
+h1 small { display: block; font: 500 17px/1.3 var(--font-mono); letter-spacing: -.2px; color: var(--rust); margin-top: 18px; }
+.lede { max-width: 760px; font-size: 18px; line-height: 1.55; margin: 0; }
+.verdict { border-left: 1px solid var(--line-strong); padding-left: 28px; }
+.stamp {
+  display: inline-block;
+  color: var(--rust);
+  border: 2px solid var(--rust);
+  padding: 8px 12px 7px;
+  font: 600 11px var(--font-mono);
+  letter-spacing: 1.7px;
+  transform: rotate(-1.5deg);
+  margin-bottom: 18px;
+}
+.verdict strong { display: block; font: 650 28px/1.05 var(--font-display); margin-bottom: 10px; }
+.verdict p { color: var(--muted); font-size: 13px; margin: 0; }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 13px; margin: 0 0 26px; }
+.kpi {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--tone, var(--pine));
+  padding: 18px 18px 16px;
+  min-width: 0;
+  box-shadow: 0 5px 18px rgba(30,38,32,.04);
+}
+.kpi-value { font: 650 38px/.95 var(--font-display); color: var(--tone, var(--pine)); font-variant-numeric: tabular-nums; }
+.kpi-label { font: 600 9px/1.4 var(--font-mono); letter-spacing: 1.2px; text-transform: uppercase; margin-top: 10px; }
+.kpi-note { color: var(--muted); font-size: 11px; margin-top: 4px; line-height: 1.4; }
+.evidence-strip { display: grid; grid-template-columns: repeat(4,1fr); border: 1px solid var(--line); background: var(--paper); margin-bottom: 42px; }
+.evidence { padding: 15px 18px; border-right: 1px solid var(--line); min-width: 0; }
+.evidence:last-child { border-right: 0; }
+.evidence b { display: block; font: 600 11px var(--font-mono); color: var(--pine); }
+.evidence span { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
+.flow-zone { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 52px; }
+.flow-card { background: var(--paper); border: 1px solid var(--line); padding: 22px; min-width: 0; }
+.flow-card h3 { margin: 0 0 6px; font: 650 24px var(--font-display); }
+.flow-card > p { margin: 0 0 17px; color: var(--muted); font-size: 12px; }
+.pipeline { display: flex; align-items: stretch; overflow-x: auto; padding: 2px 0 8px; }
+.pipe { flex: 0 0 112px; border: 1px solid var(--line); background: var(--paper-2); padding: 10px; min-width: 0; }
+.pipe b { display: block; font: 600 10px var(--font-mono); color: var(--pine); }
+.pipe small { display: block; color: var(--muted); line-height: 1.35; margin-top: 5px; }
+.pipe.bad { background: var(--rust-soft); } .pipe.bad b { color: var(--rust); }
+.pipe.good { background: var(--pine-soft); }
+.arrow { flex: 0 0 22px; display: grid; place-items: center; color: var(--muted); font: 500 16px var(--font-mono); }
+.report {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  padding: 26px clamp(24px, 5vw, 70px) 70px;
+  min-width: 0;
+}
+.report-intro {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  align-items: baseline;
+  padding: 4px 0 20px;
+  border-bottom: 3px double var(--line-strong);
+  color: var(--muted);
+  font: 500 10px var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.sec-head {
+  display: grid;
+  grid-template-columns: 44px minmax(0,1fr);
+  gap: 14px;
+  align-items: start;
+  border-top: 3px solid var(--ink);
+  margin: 58px 0 23px;
+  padding-top: 15px;
+  scroll-margin-top: 24px;
+}
+.sec-head:first-of-type { margin-top: 30px; }
+.sec-index { font: 600 11px var(--font-mono); color: var(--rust); padding-top: 8px; }
+.sec-head h2 { margin: 0; font: 650 clamp(31px, 4.5vw, 50px)/1 var(--font-display); letter-spacing: -1px; }
+h3 { font: 650 27px/1.15 var(--font-display); margin: 36px 0 12px; }
+h4 { font: 700 16px/1.35 var(--font-body); margin: 29px 0 8px; color: var(--pine); }
+p { max-width: 830px; }
+.report > p, .report > ul, .report > ol, .report > blockquote { margin-left: 58px; }
+ul, ol { padding-left: 24px; max-width: 850px; }
+li { margin: 5px 0; }
+li::marker { color: var(--rust); }
+blockquote {
+  margin-top: 22px;
+  margin-bottom: 24px;
+  background: var(--pine-soft);
+  border-left: 5px solid var(--pine);
+  padding: 20px 24px;
+  font: 500 21px/1.45 var(--font-display);
+  max-width: 860px;
+}
+blockquote p { margin: 0; }
+code { font: 500 .86em var(--font-mono); background: var(--paper-2); color: var(--rust); padding: 2px 5px; border-radius: 3px; }
+pre {
+  margin: 22px 0 28px 58px;
+  max-width: 900px;
+  padding: 20px 22px;
+  background: #14201b;
+  color: #dce9df;
+  overflow: auto;
+  border-left: 4px solid #72c4a9;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+}
+pre code { color: inherit; background: transparent; padding: 0; font-size: 12px; }
+.table-wrap, table { min-width: 0; }
+table { width: 100%; border-collapse: collapse; margin: 22px 0 31px; font-size: 12px; line-height: 1.5; }
+thead { position: sticky; top: 0; z-index: 2; }
+th {
+  background: var(--paper-2);
+  color: var(--muted);
+  font: 600 9px var(--font-mono);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 12px 13px;
+  border-top: 1px solid var(--line-strong);
+  border-bottom: 2px solid var(--line-strong);
+}
+td { vertical-align: top; padding: 12px 13px; border-bottom: 1px solid var(--line); min-width: 0; }
+tbody tr:nth-child(even) { background: rgba(22,79,66,.035); }
+tbody tr:hover { background: var(--amber-soft); }
+td:nth-child(2) { font-variant-numeric: tabular-nums; }
+.status { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 3px 8px; font: 600 9px var(--font-mono); border-radius: 4px; }
+.status::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.status--pass { color: var(--pine); background: var(--pine-soft); }
+.status--partial { color: var(--amber); background: var(--amber-soft); }
+.status--fail { color: var(--rust); background: var(--rust-soft); }
+hr { border: 0; border-top: 1px solid var(--line); margin: 38px 0; }
+strong { font-weight: 700; }
+.external { word-break: break-all; }
+.source-path { font-family: var(--font-mono); }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
+.hero, .kpi, .evidence-strip, .flow-card, .report { animation: fadeUp .45s ease-out both; }
+.kpi:nth-child(2) { animation-delay: .04s; } .kpi:nth-child(3) { animation-delay: .08s; } .kpi:nth-child(4) { animation-delay: .12s; }
+@media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration: .01ms !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+@media (max-width: 1050px) {
+  body { padding-top: 0; }
+  .wrap { grid-template-columns: 1fr; padding: 0 28px 60px; }
+  .toc {
+    position: sticky; top: 0; z-index: 100; display: flex; align-items: center; gap: 3px;
+    overflow-x: auto; max-height: none; margin: 0 -28px; padding: 9px 28px;
+    background: color-mix(in srgb, var(--bg) 94%, transparent); backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--line); grid-row: auto;
+  }
+  .toc-title { display: none; }
+  .toc a { display: block; white-space: nowrap; flex-shrink: 0; border-left: 0; border-bottom: 2px solid transparent; border-radius: 3px; padding: 6px 9px; }
+  .toc a span { display: none; }
+  .toc a.active { border-left: 0; border-bottom-color: var(--rust); }
+  .main { padding-top: 22px; }
+  .sec-head { scroll-margin-top: 58px; }
+}
+@media (max-width: 780px) {
+  .wrap { padding-left: 14px; padding-right: 14px; }
+  .toc { margin-left: -14px; margin-right: -14px; padding-left: 14px; padding-right: 14px; }
+  .hero { padding: 24px 22px 28px; margin-bottom: 22px; }
+  .hero-grid { grid-template-columns: 1fr; gap: 26px; }
+  .verdict { border-left: 0; border-top: 1px solid var(--line-strong); padding: 22px 0 0; }
+  .folio { flex-direction: column; gap: 4px; }
+  h1 { font-size: 52px; letter-spacing: -2px; }
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .evidence-strip { grid-template-columns: 1fr 1fr; }
+  .evidence:nth-child(2) { border-right: 0; }
+  .evidence:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .flow-zone { grid-template-columns: 1fr; }
+  .report { padding: 18px 17px 50px; }
+  .report > p, .report > ul, .report > ol, .report > blockquote { margin-left: 0; }
+  pre { margin-left: 0; }
+  .sec-head { grid-template-columns: 30px minmax(0,1fr); gap: 8px; margin-top: 46px; }
+  .sec-head h2 { font-size: 35px; }
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
+@media print {
+  :root { --bg:#fff; --paper:#fff; --paper-2:#f1f1ec; --ink:#111; --muted:#555; }
+  body { background: #fff; } .wrap { display:block; padding:0; } .toc { display:none; }
+  .hero,.report,.kpi,.flow-card { box-shadow:none; } .hero { break-after:page; }
+  .sec-head { break-after:avoid; } table, blockquote, pre { break-inside:avoid; }
+  a { color:inherit; text-decoration:none; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<nav class="toc" id="toc"><div class="toc-title">Sisällys / Audit 01</div><a href="#1-johtopaatos"><span>01</span>Johtopäätös</a>
+<a href="#2-mita-auditoin"><span>02</span>Mitä auditoin</a>
+<a href="#3-nykyinen-ratkaisu"><span>03</span>Nykyinen ratkaisu</a>
+<a href="#4-dokumentaation-lupaus-ja-toteutunut-tila"><span>04</span>Dokumentaation lupaus ja to…</a>
+<a href="#5-estavat-tekniset-loydokset"><span>05</span>Estävät tekniset löydökset</a>
+<a href="#6-tuote-ja-markkina-arvio"><span>06</span>Tuote- ja markkina-arvio</a>
+<a href="#7-suositeltu-pivot"><span>07</span>Suositeltu pivot</a>
+<a href="#8-tavoitearkkitehtuuri"><span>08</span>Tavoitearkkitehtuuri</a>
+<a href="#9-neljan-viikon-roadmap"><span>09</span>Neljän viikon roadmap</a>
+<a href="#10-tyomaara-ja-uudelleenkaytto"><span>10</span>Työmäärä ja uudelleenkäyttö</a>
+<a href="#11-priorisoitu-tehtavalista"><span>11</span>Priorisoitu tehtävälista</a>
+<a href="#12-paatos-vaihtoehdoittain"><span>12</span>Päätös vaihtoehdoittain</a>
+<a href="#13-lahteet"><span>13</span>Lähteet</a>
+<a href="#lopullinen-suositus"><span>14</span>Lopullinen suositus</a></nav>
+<main class="main">
+<header class="hero">
+  <div class="folio"><span>Repo due diligence · 16.07.2026</span><span>branch 81a35b5 · 70 files · 4 953 LOC</span></div>
+  <div class="hero-grid">
+    <div>
+      <h1>Suomivillage<small>Koivulahti · repo-, tuote- ja jatkamisauditointi</small></h1>
+      <p class="lede">Käyttökelpoinen prototyyppi, väärä seuraava roadmap. Kylä tallentaa eventit ja generoi postaukset, mutta hahmot eivät vielä tee maailmaa muuttavia päätöksiä. Neljän viikon live-saippua-pilotti antaa projektille reilun jatkomahdollisuuden.</p>
+    </div>
+    <aside class="verdict">
+      <div class="stamp">EHDOLLINEN JATKO</div>
+      <strong>Pidä repo.<br>Jäädytä roadmap.</strong>
+      <p>Korjaa P0-riskit ja testaa seitsemän päivän formaatti oikeilla katsojilla. Älä rakenna yleistä AI village -alustaa.</p>
+    </aside>
+  </div>
+</header>
+
+<section class="kpi-grid" aria-label="Avainarviot">
+  <div class="kpi" style="--tone:var(--rust)"><div class="kpi-value">4/10</div><div class="kpi-label">Nykyinen tuote</div><div class="kpi-note">Prototyyppi ilman loppukäyttäjän pintaa</div></div>
+  <div class="kpi" style="--tone:var(--pine)"><div class="kpi-value">7/10</div><div class="kpi-label">Pelastettavuus</div><div class="kpi-note">Sisältödata ja event-first-periaate säilyvät</div></div>
+  <div class="kpi" style="--tone:var(--amber)"><div class="kpi-value">3 / 73</div><div class="kpi-label">Runtime-eventit</div><div class="kpi-note">Routine käyttää vain kolmea katalogityyppiä</div></div>
+  <div class="kpi" style="--tone:var(--blue)"><div class="kpi-value">10 / 50</div><div class="kpi-label">Offline-testit</div><div class="kpi-note">Muut 40 vaativat palvelun tai mallin</div></div>
+</section>
+
+<section class="evidence-strip" aria-label="Auditoinnin näyttö">
+  <div class="evidence"><b>6 / 6 images</b><span>Docker build ja import läpi</span></div>
+  <div class="evidence"><b>3 / 3 smoke</b><span>Eristetty event-to-API E2E läpi</span></div>
+  <div class="evidence"><b>0 / 5 replay</b><span>Restart-eventit eivät täsmänneet</span></div>
+  <div class="evidence"><b>01.06.2026</b><span>Nykyinen Gemini-malli suljettiin</span></div>
+</section>
+
+<section class="flow-zone" aria-label="Arkkitehtuurivertailu">
+  <article class="flow-card">
+    <h3>Nykyinen ketju</h3><p>Toimiva putki, mutta kaksi mallia, häviävä Redis-lista ja puuttuva UI.</p>
+    <div class="pipeline">
+      <div class="pipe"><b>ENGINE</b><small>3 routine-tyyppiä</small></div><div class="arrow">→</div>
+      <div class="pipe"><b>REDIS</b><small>BRPOP, ei ackia</small></div><div class="arrow">→</div>
+      <div class="pipe bad"><b>GEMINI</b><small>suljettu malli</small></div><div class="arrow">→</div>
+      <div class="pipe"><b>QWEN</b><small>English draft polish</small></div><div class="arrow">→</div>
+      <div class="pipe bad"><b>API</b><small>ei UI:ta</small></div>
+    </div>
+  </article>
+  <article class="flow-card">
+    <h3>Suositeltu vertical slice</h3><p>Legal actions, tallennetut päätökset ja yksi suomenkielinen renderer.</p>
+    <div class="pipeline">
+      <div class="pipe good"><b>STATE</b><small>clock, paikka, tavarat</small></div><div class="arrow">→</div>
+      <div class="pipe good"><b>ACTIONS</b><small>vain lailliset valinnat</small></div><div class="arrow">→</div>
+      <div class="pipe good"><b>EVENT LOG</b><small>effects + outbox</small></div><div class="arrow">→</div>
+      <div class="pipe good"><b>RENDER</b><small>yksi FI-kutsu</small></div><div class="arrow">→</div>
+      <div class="pipe good"><b>AUDIENCE</b><small>feed, recap, vote</small></div>
+    </div>
+  </article>
+</section>
+
+<article class="report">
+  <div class="report-intro"><span>Full report · evidence, risks, market, roadmap</span><span>Source: docs/REPO_AUDIT_2026-07-16.md</span></div>
+  <div class="sec-head" id="1-johtopaatos"><span class="sec-index">01</span><h2>1. Johtopäätös</h2></div>
+<p>Repo sisältää käyttökelpoisen prototyypin ja hyviä sisältöaihioita. Se ei sisällä vielä tuotetta, jonka kysyntää voisi mitata. Se ei myöskään toteuta dokumentaation lupaamaa autonomista kylää.</p>
+<p>Nykyinen järjestelmä tekee kolme asiaa kohtuullisesti:</p>
+<ol>
+<li>Se tallentaa tapahtumat Postgresiin.</li>
+<li>Se kuljettaa renderöintityöt Redis-jonon ja LLM-gatewayn kautta.</li>
+<li>Se sisältää 12 hahmon, 9 paikan ja 73 tapahtumatyypin sisältöpaketin.</li>
+</ol>
+<p>Kylän varsinainen autonomia puuttuu. LLM valitsee tällä hetkellä lähinnä <code>IGNORE</code>, <code>POST_FEED</code>, <code>POST_CHAT</code> tai <code>REPLY</code>. Se ei liikuta hahmoa, tee kauppaa, lainaa tavaraa, auta, pyydä anteeksi tai muuta maailmaa. Engine syöttää sille valmiiksi kolme arkista tapahtumaa: <code>LOCATION_VISIT</code>, <code>SMALL_TALK</code> ja <code>CUSTOMER_INTERACTION</code>.</p>
+<p>Markkina ei ole tyhjä. AI Town, Stanford Generative Agents, DeepMind Concordia, Chirper ja Steamissa julkaistu AI Society kattavat jo suuren osan yleisestä &quot;AI-hahmot elävät keskenään&quot; -ideasta. Koivulahden erottautumistekijäksi ei riitä suomalainen nimi tai paikallinen LLM.</p>
+<p><strong>Jatkaminen kannattaa vain, jos tuote rajataan tähän hypoteesiin:</strong></p>
+<blockquote>
+<p>Kuusi muistettavaa suomalaista hahmoa tuottaa seitsemän päivän aikana syy-seuraussuhteiltaan uskottavan live-saippuan, jota katsojat palaavat seuraamaan ja jonka seuraavaan päivään he haluavat vaikuttaa.</p>
+</blockquote>
+<p>Tälle kannattaa antaa neljän viikon, tarkasti rajattu validointijakso. Sen jälkeen Sami joko jatkaa mitatun käytön perusteella tai arkistoi projektin.</p>
+<h3>Arvosanat</h3>
+<table>
+<thead>
+<tr>
+<th>Alue</th>
+<th style="text-align:right">Arvio</th>
+<th>Perustelu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Konsepti ja sisältöaihio</td>
+<td style="text-align:right">7/10</td>
+<td>Suomalainen kylä, mediaformaatit ja hahmocasti muodostavat ymmärrettävän kokonaisuuden.</td>
+</tr>
+<tr>
+<td>Tekninen perusta</td>
+<td style="text-align:right">5/10</td>
+<td>Event-first-ajattelu, Postgres, Redis ja gateway ovat käyttökelpoisia. Toteutus on prototyyppitasoa.</td>
+</tr>
+<tr>
+<td>Agenttien autonomia</td>
+<td style="text-align:right">2/10</td>
+<td>Päätökset koskevat lähes vain julkaisemista. Maailmaa muuttava action loop puuttuu.</td>
+</tr>
+<tr>
+<td>Sisällön laatu</td>
+<td style="text-align:right">4/10</td>
+<td>Rakenne pysyy JSONissa, mutta teksti toistaa fraaseja ja sisältää kielivirheitä.</td>
+</tr>
+<tr>
+<td>Käyttökokemus</td>
+<td style="text-align:right">1/10</td>
+<td>Julkista UI:ta ei ole. API ja CLI-monitori eivät testaa viihdearvoa.</td>
+</tr>
+<tr>
+<td>Luotettavuus ja replay</td>
+<td style="text-align:right">2/10</td>
+<td>Jonot menettävät töitä virheissä. Restart-determinismi epäonnistui 0/5 vertailussa. Replay puuttuu.</td>
+</tr>
+<tr>
+<td>Tietoturva</td>
+<td style="text-align:right">2/10</td>
+<td>Vanha API-avain on remote-branchin tipissä. Palvelut ja tietokannat avataan ilman suojausta.</td>
+</tr>
+<tr>
+<td>Testaus ja CI</td>
+<td style="text-align:right">3/10</td>
+<td>50 testiä, joista vain 10 toimii ilman käynnissä olevia palveluita. CI puuttuu.</td>
+</tr>
+<tr>
+<td>Markkinaerottuvuus</td>
+<td style="text-align:right">3/10</td>
+<td>Suoria avoimen lähdekoodin, tutkimus- ja kuluttajatuotekilpailijoita on useita.</td>
+</tr>
+<tr>
+<td>Pelastettavuus</td>
+<td style="text-align:right">7/10</td>
+<td>Hahmot, tapahtumakatalogi, event store -ajatus ja osa gatewaysta kannattaa käyttää uudelleen.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Nykyinen tuote:</strong> 4/10<br>
+<strong>Repo uuden, rajatun vertical slicen lähtöpisteenä:</strong> 7/10</p>
+<hr />
+<div class="sec-head" id="2-mita-auditoin"><span class="sec-index">02</span><h2>2. Mitä auditoin</h2></div>
+<h3>Repo ja historia</h3>
+<ul>
+<li>70 tracked-tiedostoa, noin 716 kt</li>
+<li>noin 4 953 riviä tuotantokoodia</li>
+<li>noin 546 riviä testikoodia</li>
+<li>34 committia viideltä aktiiviselta kehityspäivältä</li>
+<li>viimeinen commit 21.12.2025, 206 päivää ennen auditointia</li>
+<li>ei tageja eikä releaseja</li>
+<li>ei lisenssiä</li>
+<li>ei GitHub Actions -workflowta</li>
+<li>nykyinen feature-branch on viisi committia mainia edellä</li>
+<li>paikallinen <code>main</code> on kahdeksan committia <code>origin/main</code>-branchia edellä</li>
+<li>current feature on yhden tietoturvakommitin <code>origin/feature/ambient-event-generator</code>-branchia edellä</li>
+</ul>
+<p>Repo syntyi lyhyessä sprintissä. Commit-historia ja <code>status-and-next.md</code> näyttävät nopean tutkimusprototyypin, eivät ylläpidetyn tuotteen kehitystä.</p>
+<h3>Ajot ja tarkistukset</h3>
+<p>Auditissa tehtiin seuraavat ajot:</p>
+<ul>
+<li><code>compileall</code>: läpi</li>
+<li>offline-unit-testit: 10/10 läpi</li>
+<li>kuusi omaa Docker-kuvaa: build läpi</li>
+<li>kuusi image-import-smokea: läpi</li>
+<li><code>pip check</code>: läpi kaikissa kuvissa</li>
+<li><code>pip-audit</code>: ei tunnettuja haavoittuvuuksia API- ja decision-service-kuvien nykyisissä, build-hetkellä ratkaistuissa paketeissa</li>
+<li>Ruff: 18 löydöstä</li>
+<li>Bandit: 21 low-löydöstä, ei medium/high-löydöksiä</li>
+<li>eristetty mock-LLM E2E: event -&gt; Redis -&gt; gateway -&gt; post -&gt; API toimi</li>
+<li>repo smoke test eristetyssä E2E:ssä: 3/3 läpi</li>
+<li>oikea Qwen2.5 7B CPU-renderöinti: toimi</li>
+<li>gatewayn contract/quality-testit oikealla Qwenilla: 30 passed, 1 xfailed, 6 xpassed</li>
+<li>restart-determinismivertailu: 0/5 tulevasta routine-eventistä vastasi katkeamatonta ajoa</li>
+</ul>
+<h3>E2E-havainto</h3>
+<p>Nykyisen checkoutin Postgres-init pysähtyi migraatioon <code>003_ambient_tables.sql</code>, koska tiedoston käyttöoikeus oli <code>600</code> eikä Postgres-kontin käyttäjä pystynyt lukemaan sitä. Auditointi kopioi migraatiot erilliseen testikansioon oikeuksilla <code>644</code>. Sen jälkeen perusputki toimi.</p>
+<p>Eristetty ajo käytti mock-LLM:ää eikä kutsunut Geminiä. Viiden sekunnin nopeutetussa ajossa syntyi:</p>
+<ul>
+<li>209 eventtiä</li>
+<li>56 postausta</li>
+<li>44 muistia</li>
+<li>14 relationship-riviä</li>
+</ul>
+<p>Määrä kertoo putken toimivan. Se kertoo myös ketjureaktioiden eventtimäärän kasvavan nopeasti.</p>
+<h3>Oikea paikallinen malli</h3>
+<p>Qwen2.5 7B Q4 tuotti CPU-ajossa ensimmäisen vastauksen 28,64 sekunnissa. Testisarja kesti 10 minuuttia 52 sekuntia. Rakenteelliset testit menivät läpi, mutta yksi auditointipostaus oli:</p>
+<blockquote>
+<p>&quot;Aamulla ensimmäinen pullapelti onnistui! Hyvää alua myyjille!&quot;</p>
+</blockquote>
+<p>Testit hyväksyivät tekstin, vaikka se sisälsi kielivirheen ja oudon loppulauseen. Nykyinen eval mittaa muotoa paremmin kuin viihdearvoa tai suomen laatua.</p>
+<p>GPU-profiilia ei saatu tällä koneella käyntiin, koska Dockerilta puuttui NVIDIA Container Toolkit. Koneessa on RTX 3080, mutta <code>docker run --gpus all</code> epäonnistui. Tämä on ympäristövika, ei suoraan sovelluskoodin vika.</p>
+<hr />
+<div class="sec-head" id="3-nykyinen-ratkaisu"><span class="sec-index">03</span><h2>3. Nykyinen ratkaisu</h2></div>
+<h3>Toteutunut putki</h3>
+<pre><code class="language-text">Routine-event / mock ambient / nähty postaus
+  -&gt; Engine
+  -&gt; Postgres events
+  -&gt; Redis decision_jobs
+  -&gt; Gemini-päätös
+  -&gt; Redis render_jobs
+  -&gt; Worker
+  -&gt; llama.cpp / Qwen
+  -&gt; Postgres posts
+  -&gt; FastAPI
+  -&gt; ei loppukäyttäjän UI:ta
+</code></pre>
+<h3>Käyttökelpoiset osat</h3>
+<h4>Event-first-periaate</h4>
+<p>Engine tallentaa maailman tapahtumat ennen sisällön generointia. Tämä on oikea suunta. LLM ei saa suoraan kirjoittaa maailman totuutta.</p>
+<h4>Sisältöpaketti</h4>
+<p>Katalogi sisältää:</p>
+<ul>
+<li>12 NPC-profiilia</li>
+<li>9 paikkaa</li>
+<li>73 eventtityyppiä</li>
+<li>tavoitteet, triggerit, salaisuudet ja ääniprofiilit kaikille hahmoille</li>
+<li>Day 1 -skenaarion</li>
+<li>impact scoring -asetukset</li>
+<li>moderointi- ja rate limit -säännöt</li>
+</ul>
+<p>Tämä aineisto säästää aikaa uudessa vertical slicessa.</p>
+<h4>Palvelurajat</h4>
+<p>Engine, päätöksenteko, renderöinti ja API on erotettu käsitteellisesti. Rajat auttavat, vaikka nykyinen kuuden sovelluspalvelun toteutus on liian raskas yhden kehittäjän MVP:lle.</p>
+<h4>Gateway</h4>
+<p>Gateway lukitsee <code>channel</code>, <code>author_id</code> ja <code>source_event_id</code> requestin arvoihin. Se tukee useita llama.cpp-endpointteja ja JSON-repairia. Adapteriraja kannattaa säilyttää suppeampana versiona.</p>
+<h4>Monitori</h4>
+<p><code>tools/village_monitor.py</code> auttaa debugissa. Se näyttää eventit, päätökset ja postaukset samassa näkymässä.</p>
+<hr />
+<div class="sec-head" id="4-dokumentaation-lupaus-ja-toteutunut-tila"><span class="sec-index">04</span><h2>4. Dokumentaation lupaus ja toteutunut tila</h2></div>
+<table>
+<thead>
+<tr>
+<th>Väite tai ominaisuus</th>
+<th>Tila</th>
+<th>Auditointihavainto</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Eventit ovat maailman totuus</td>
+<td><span class="status status--partial">Toteutuu osin</span></td>
+<td>Engine tallentaa tapahtumat ennen renderöintiä.</td>
+</tr>
+<tr>
+<td>Jatkuva simulaatio</td>
+<td><span class="status status--pass">Toteutuu</span></td>
+<td>Tick-loop ja kolme routine-eventtiä toimivat.</td>
+</tr>
+<tr>
+<td>12 autonomista NPC:tä</td>
+<td><span class="status status--fail">Ei toteudu</span></td>
+<td>Engine valitsee toiminnan. LLM päättää pääosin julkaiseeko NPC.</td>
+</tr>
+<tr>
+<td>Action schema</td>
+<td><span class="status status--partial">Dataa vain</span></td>
+<td><code>MOVE_TO</code>, <code>BUY</code>, <code>BORROW</code>, <code>HELP</code> ja muut actionit eivät ohjaa runtimea.</td>
+</tr>
+<tr>
+<td>Tavoiteohjattu toiminta</td>
+<td><span class="status status--fail">Ei toteudu</span></td>
+<td>Goalit luetaan päätöspromptiin, mutta ne eivät muuta maailmaa tai päivity.</td>
+</tr>
+<tr>
+<td>Päivärutiinit</td>
+<td><span class="status status--partial">Dataa vain</span></td>
+<td>Kaikilla profiileilla on routine, mutta engine ei käytä sitä.</td>
+</tr>
+<tr>
+<td>Täysi determinismi</td>
+<td><span class="status status--fail">Ei toteudu</span></td>
+<td>Restart-ajo poikkesi 5/5 tulevassa eventissä. LLM-output ei ole seed-deterministinen.</td>
+</tr>
+<tr>
+<td>Replay</td>
+<td><span class="status status--fail">Ei toteudu</span></td>
+<td>Snapshot-taulu ja admin-endpoint ovat stubit.</td>
+</tr>
+<tr>
+<td>Moderointi</td>
+<td><span class="status status--fail">Ei toteudu</span></td>
+<td>Katalogin säännöt eivät vaikuta insertiin tai julkaisuun.</td>
+</tr>
+<tr>
+<td>Rate limitit</td>
+<td><span class="status status--fail">Ei toteudu</span></td>
+<td>Katalogin rajat eivät ole runtimessa. In-memory cooldown kattaa vain fallback-polun.</td>
+</tr>
+<tr>
+<td>Catalog-promptit käytössä</td>
+<td><span class="status status--fail">Ei toteudu</span></td>
+<td>Worker lataa <code>PROMPT_CONFIG</code>:in mutta ei käytä sitä.</td>
+</tr>
+<tr>
+<td>Daily NEWS</td>
+<td><span class="status status--partial">Vain Day 1 -seed</span></td>
+<td>Toistuva digest puuttuu.</td>
+</tr>
+<tr>
+<td>External ambient data</td>
+<td><span class="status status--fail">Ei toteudu</span></td>
+<td>Worker käyttää mock-säätä ja mock-uutisia.</td>
+</tr>
+<tr>
+<td>Post chain reactions</td>
+<td><span class="status status--partial">Osittain</span></td>
+<td>DB-kentät ja ensimmäinen vastaustaso toimivat. API ei palauta thread-kenttiä.</td>
+</tr>
+<tr>
+<td>API channel filter</td>
+<td><span class="status status--fail">Ei toteudu</span></td>
+<td>README lupaa filtterin, route hyväksyy vain <code>limit</code>-parametrin.</td>
+</tr>
+<tr>
+<td>Admin start/stop/replay</td>
+<td><span class="status status--fail">Stub</span></td>
+<td>Endpointit vastaavat <code>accepted</code>, mutta eivät tee toimenpiteitä.</td>
+</tr>
+<tr>
+<td>Read-only village UI</td>
+<td><span class="status status--fail">Puuttuu</span></td>
+<td>Projektin viihdearvoa ei voi testata.</td>
+</tr>
+<tr>
+<td>Demo-ready</td>
+<td><span class="status status--fail">Ei nykytilassa</span></td>
+<td>Quick start kaatuu, Gemini-malli on suljettu ja UI puuttuu.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<div class="sec-head" id="5-estavat-tekniset-loydokset"><span class="sec-index">05</span><h2>5. Estävät tekniset löydökset</h2></div>
+<h3>P0: korjaa ennen seuraavaa normaalia ajoa</h3>
+<h4>5.1 Vanha Gemini-avain on remote-branchin tipissä</h4>
+<p>Commit <code>5ef0e06</code> sisältää kovakoodatun Google API -avaimen. <code>origin/feature/ambient-event-generator</code> osoittaa suoraan tähän committiin. Korjauscommit <code>81a35b5</code> on vain paikallinen.</p>
+<p>Nykyisen <code>.env</code>:n avain on eri avain. Vanhan avaimen tila pitää silti tarkistaa, avain pitää perua ja branchin historia pitää siivota tai branch poistaa.</p>
+<p><strong>Toimet:</strong></p>
+<ol>
+<li>Peru vanha avain Google Cloudissa.</li>
+<li>Älä pushaa pelkkää poistocommittia ratkaisuna. Salaisuus jää historiaan.</li>
+<li>Poista remote-feature-branch tai kirjoita historia uudelleen.</li>
+<li>Lisää secret scanning CI:hin.</li>
+</ol>
+<h4>5.2 Oletuspäätösmalli on suljettu</h4>
+<p><code>packages/shared/gemini_client.py:10</code> käyttää mallia <code>gemini-2.0-flash-exp</code>. Google sulki Gemini 2.0 Flash -mallit 1.6.2026. Myös rinnakkainen <code>gemini-3-flash-preview</code> on preview-niminen kovakoodaus, eikä runtime käytä sitä.</p>
+<p>Nykyinen default-polku ei voi toimia heinäkuussa 2026.</p>
+<p><strong>Toimet:</strong></p>
+<ul>
+<li>tee provider ja model env-konfiguroitavaksi</li>
+<li>käytä nykyistä GA-mallia</li>
+<li>lisää startupissa capabilities-probe</li>
+<li>estä engineä tuottamasta töitä, jos decision provider ei ole terve</li>
+</ul>
+<h4>5.3 Quick start kaataa enginen</h4>
+<p><code>.env.example</code> puuttuu ainakin:</p>
+<ul>
+<li><code>DECISION_QUEUE</code></li>
+<li><code>DECISION_SERVICE_ENABLED</code></li>
+<li><code>GEMINI_API_KEY</code></li>
+<li>ambient-asetukset</li>
+</ul>
+<p>Compose syöttää puuttuvan <code>DECISION_SERVICE_ENABLED</code>-arvon tyhjänä stringinä. Pydantic kaataa enginen boolean-parsintaan ennen DB-yhteyttä.</p>
+<h4>5.4 Palvelut avataan hostille ilman suojausta</h4>
+<p>Compose julkaisee portit 5432, 6379, 8080, 8081 ja 8082 kaikille hostin interfacelle. Redisissä ei ole salasanaa. API:ssa, admin-reiteissä ja LLM-gatewayssa ei ole autentikointia. CORS sallii kaikki originit ja credentialit.</p>
+<p>Docker voi ohittaa tavallisia UFW-odotuksia. Tätä composea ei pidä ajaa julkisella palvelimella.</p>
+<p><strong>Toimet:</strong></p>
+<ul>
+<li>poista Postgresin ja Redisin host-portit</li>
+<li>sido dev-portit <code>127.0.0.1</code>:een</li>
+<li>laita API reverse proxyn taakse</li>
+<li>suojaa admin ja gateway autentikoinnilla</li>
+<li>lisää request- ja inference-rate limitit</li>
+</ul>
+<h4>5.5 Decision-jonon kapasiteetti ei riitä saapuvaan työhön</h4>
+<p>Engine luo yhden routine-decisionin 10 sekunnissa. Decision-service käsittelee enintään yhden kutsun 10 sekunnissa. Routine-eventit käyttävät siis koko kapasiteetin ennen ambient-eventtejä ja postireaktioita.</p>
+<p>Jokainen uusi postaus luo noin puolelle muista NPC:istä uuden päätöstyön. Jono kasvaa ilman ylärajaa. Routine-pohja yksin tarkoittaa 8 640 päätöskutsua päivässä ja arviolta 13-26 miljoonaa input-tokenia päivässä ennen ketjureaktioita.</p>
+<p><code>DECISION_MIN_INTERVAL</code> löytyy <code>.env</code>:stä, mutta compose ei välitä sitä decision-service-kontille.</p>
+<h3>P1: korjaa ennen vertical slice -pilottia</h3>
+<h4>5.6 Redis-listat menettävät töitä</h4>
+<p>Workerit käyttävät <code>BRPOP</code>:ia. Redis poistaa työn ennen generointia tai DB-inserttiä. Prosessin kaatuminen, timeout tai tietokantavirhe hävittää työn. Retrytä, ackia tai dead letter -jonoa ei ole.</p>
+<p>Sama puute koskee decision- ja render-jonoa.</p>
+<h4>5.7 Idempotenssi puuttuu</h4>
+<p><code>posts</code>-taulussa ei ole unique-rajaa päätökselle, lähde-eventille tai render-jobille. Uudelleenajo voi luoda duplikaatteja. Decision- ja render-jobien ID:t käyttävät satunnaista UUID:ta, mikä rikkoo replayta.</p>
+<h4>5.8 Restart-determinismi on rikki</h4>
+<p>Engine yrittää kelata RNG:tä eteenpäin kahdella <code>choice</code>-kutsulla per routine-event. Oikea event-generointi käyttää enemmän RNG-kutsuja payloadiin, kohdehahmoon ja paikkavalintaan.</p>
+<p>Auditin vertailussa restart-polku vastasi katkeamatonta ajoa 0/5 eventissä.</p>
+<p>Determinismi pitää määritellä uudelleen:</p>
+<ul>
+<li>engine on deterministinen annetulla action-logilla ja ambient-snapshotilla</li>
+<li>replay käyttää tallennettuja LLM-päätöksiä</li>
+<li>sama seed yksin ei takaa samaa pilvimallin outputia</li>
+</ul>
+<h4>5.9 Varsinainen action engine puuttuu</h4>
+<p>Katalogi lupaa <code>MOVE_TO</code>, <code>TALK_TO</code>, <code>BUY</code>, <code>SELL</code>, <code>BORROW</code>, <code>HELP</code> ja muita toimia. Decision-schema sallii vain julkaisemisen ja ignoren.</p>
+<p>Maailmassa ei ole riittävää mutable statea sijainnille, inventaariolle, rahalle, tarpeille tai tehtävien etenemiselle. Hahmojen keskustelu ei voi tuottaa uskottavia seurauksia ilman tätä kerrosta.</p>
+<h4>5.10 Moderointi ja oikean maailman data eivät kohtaa</h4>
+<p>Katalogi kieltää oikeisiin ihmisiin ja tapahtumiin kohdistuvan sisällön. Ambient-worker syöttää mockina hallitus-, vaali- ja talousuutisia. Jos mockit vaihdetaan RSS:ään, ulkoinen sisältö menee prompttiin ilman prompt injection -suojausta, lähdepolitiikkaa tai faktantarkistusta.</p>
+<p>Poista oikeat uutiset MVP:stä. Sää voidaan generoida simulaation omasta kalenterista.</p>
+<h4>5.11 Gemini-avain voi vuotaa virhelokiin</h4>
+<p>Client lisää API-avaimen query stringiin. <code>httpx.HTTPStatusError</code> sisältää request-URL:n. <code>make_decision</code> tallentaa exception-tekstin <code>decisions.error</code>-kenttään. Virhe voi siis kopioida avaimen tietokantaan.</p>
+<p>Käytä ylläpidettyä SDK:ta tai header-pohjaista autentikointia. Sanitiseeraa virheet ennen lokitusta.</p>
+<h4>5.12 Migraatiomalli ei toimi jatkuvassa kehityksessä</h4>
+<p>Postgres ajaa <code>/docker-entrypoint-initdb.d</code>-hakemiston vain tyhjälle volumelle. Uudet migraatiot eivät aja olemassa olevaan kantaan. Repo ei seuraa schema-versiota eikä tarjoa upgrade-komentoa.</p>
+<p>Nykyisessä checkoutissa migraatiot 003-005 olivat lisäksi oikeuksilla <code>600</code>.</p>
+<h3>P2: ylläpidettävyys</h3>
+<ul>
+<li><code>runner.py</code> on 1 305 riviä ja se sekoittaa seedauksen, scoringin, ambientin, cooldownit, postijakelun ja tick-loopin.</li>
+<li><code>worker.py</code> on 713 riviä. <code>make_draft</code> sisältää noin 159 riviä haarautuvaa template-logiikkaa.</li>
+<li>Kaikki Python-riippuvuudet ratkaistaan buildissa ilman lockfilea.</li>
+<li>Image-tagit eivät käytä digest-pinnejä.</li>
+<li>Kaikki sovelluskontit ajavat root-käyttäjänä.</li>
+<li>Runtime käyttää <code>assert</code>-lauseita yhteystilojen tarkistukseen.</li>
+<li>API:n health ei tarkista riippuvuuksia. Gatewayn health ei tarkista LLM-palvelinta.</li>
+<li><code>render_jobs</code>- ja <code>world_snapshots</code>-tauluja ei käytetä.</li>
+<li>Post thread -kentät eivät tule API:sta ulos.</li>
+<li><code>POST_SEEN</code> puuttuu event-katalogista.</li>
+<li>Relationship-seedissä on 6 normaalia directed edgeä 132 mahdollisesta, noin 4,5 prosenttia.</li>
+<li>Relationship-arvoja ei rajata välille -100...100.</li>
+<li>Muistien summary on usein vain <code>EVENT_TYPE @ place</code>, joten LLM ei saa tapahtuman merkitystä.</li>
+<li>Muistien recency käyttää wall clockia, vaikka simulaatio käyttää sim clockia.</li>
+<li>Ambient <code>upsert_ambient_event</code> tulkitsee sekä <code>INSERT 0 1</code> että <code>INSERT 0 0</code> onnistuneeksi insertiksi.</li>
+<li>Katalogin ilmoitettu event-määrä on 54, todellinen 73.</li>
+<li>Katalogissa on typo <code>ffection</code>, kaksi severity-typoa, prompt-template-typoja ja yksi encoding-rikko.</li>
+<li>Meta kertoo &quot;1 sim minute = 2 real seconds&quot;, mutta engine etenee suhteessa 1:1.</li>
+<li>Lisenssi on edelleen <code>TBD</code>.</li>
+</ul>
+<hr />
+<div class="sec-head" id="6-tuote-ja-markkina-arvio"><span class="sec-index">06</span><h2>6. Tuote- ja markkina-arvio</h2></div>
+<h3>Markkinassa on kiinnostusta</h3>
+<p>Aihe ei ole kuollut:</p>
+<ul>
+<li>a16z AI Town: 10 164 GitHub-tähteä, aktiivinen 2026</li>
+<li>Stanford Generative Agents: 21 755 tähteä</li>
+<li>DeepMind Concordia: aktiivinen generative social simulation -kirjasto</li>
+<li>Chirper: tutkimusaineistossa yli 65 000 agenttia ja 7,7 miljoonaa AI-postausta</li>
+<li>Showrunner: Amazonin tukema interaktiivisen AI-TV:n hanke</li>
+<li>AI Society: julkaistu Steamissa 20.3.2026</li>
+</ul>
+<h3>Geneerinen toteutus ei erotu</h3>
+<p>Avoimen lähdekoodin starter kit ratkaisee jo virtuaalikylän perusongelman. Tutkimusframeworkit ratkaisevat muistia ja sosiaalista simulaatiota. Kuluttajatuotteet tarjoavat kartan, hahmoeditorin, talouden, suhteet ja pelaajan interventiot.</p>
+<p>Koivulahti kilpailee tällä hetkellä lähinnä tekstiputkella. Sillä ei ole UI:ta, kuvia, ääntä, pelimekaniikkaa tai yleisön toimintaa.</p>
+<h3>AI Society antaa hyödyllisen varoituksen</h3>
+<p>AI Society kuvaa lähes samaa lupausta: paikalliset LLM-hahmot työskentelevät, rakentavat suhteita, postaavat someen ja reagoivat pelaajan toimintaan.</p>
+<p>Steamissa sillä oli auditointihetkellä 26 arvostelua, joista 16 positiivista ja 10 negatiivista. Arvostelujen toistuvat ongelmat olivat:</p>
+<ul>
+<li>keskustelu ei vaikuta maailmaan</li>
+<li>hahmot sotkevat faktoja</li>
+<li>pelaajan interventiot tuntuvat irrallisilta</li>
+<li>toimintoja ja rakennuksia on liian vähän</li>
+<li>agentit jäävät juttelemaan, koska niillä ei ole tarpeeksi affordansseja</li>
+<li>päätöksenteko on hidasta</li>
+</ul>
+<p>Koivulahti kärsii jo kooditasolla samoista ongelmista. Se kannattaa ottaa suunnittelun lähtökohdaksi.</p>
+<h3>Suomalaisuus auttaa vain sisältöformaatin kautta</h3>
+<p>Suomen kieli ja kyläkulttuuri voivat tehdä tuotteesta muistettavan. Ne eivät muodosta teknistä moat-tekijää. Erottuvuus syntyy, jos Sami paketoi simulaation formaatiksi:</p>
+<ul>
+<li>tunnistettavat hahmot</li>
+<li>viikoittaiset kaaret</li>
+<li>lyhyet päivittäiset koosteet</li>
+<li>katsojan äänestys</li>
+<li>syyt ja seuraukset, jotka näkyvät seuraavana päivänä</li>
+<li>vahva visuaalinen identiteetti</li>
+</ul>
+<p>Autonomia toimii tuotantotapana. Katsoja ostaa draamaa, huumoria ja vaikutusvaltaa.</p>
+<h3>Realistiset käyttötavat</h3>
+<table>
+<thead>
+<tr>
+<th>Suunta</th>
+<th>Arvio</th>
+<th>Perustelu</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Yleinen AI village -alusta</td>
+<td>Älä rakenna</td>
+<td>Kilpailu on vahva, eikä nykyinen repo tuo teknistä etua.</td>
+</tr>
+<tr>
+<td>Itsenäinen kuluttajapeli</td>
+<td>Ei vielä</td>
+<td>UI, gameplay, animaatio ja retention loop puuttuvat.</td>
+</tr>
+<tr>
+<td>Seitsemän päivän suomalainen live-saippua</td>
+<td>Testaa</td>
+<td>Rajattu formaatti käyttää nykyisiä hahmoja ja event-first-ajatusta.</td>
+</tr>
+<tr>
+<td>IsoRatas-demo / portfolio</td>
+<td>Kannattaa</td>
+<td>Bounded pilot tuottaa näkyvän agentic-system-casen, vaikka kuluttajatuote ei jatkuisi.</td>
+</tr>
+<tr>
+<td>Tutkimus- tai benchmark-repo</td>
+<td>Mahdollinen</td>
+<td>Determinismi, causality-eval ja suomenkielinen sisältö voivat muodostaa oman niche-arvon.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<div class="sec-head" id="7-suositeltu-pivot"><span class="sec-index">07</span><h2>7. Suositeltu pivot</h2></div>
+<h3>Tuotelupaus</h3>
+<p><strong>Koivulahti on seitsemän päivän live-saippua. Kuusi AI-hahmoa elää samassa suomalaisessa kylässä, ja jokainen julkaisu seuraa oikeasta pelimaailman tapahtumasta. Katsojat päättävät kerran päivässä yhden huomisen rajoitteen.</strong></p>
+<h3>Ensimmäinen käyttäjäkysymys</h3>
+<p>Palaako katsoja huomenna katsomaan, miten eilinen konflikti eteni?</p>
+<p>Älä optimoi ensimmäisessä pilotissa agenttien määrää, mallien paikallisuutta tai event-katalogin laajuutta. Mittaa hahmojen muistettavuutta ja tarinan jatkuvuutta.</p>
+<h3>Rajaa ensimmäinen kausi</h3>
+<ul>
+<li>6 NPC:tä</li>
+<li>3 paikkaa</li>
+<li>8-12 toteutettua eventtityyppiä</li>
+<li>6 maailmaa muuttavaa actionia</li>
+<li>2 tarinakaarta</li>
+<li>7 sim-päivää</li>
+<li>1 katsojaäänestys päivässä</li>
+<li>FEED, CHAT ja päivän NEWS-kooste</li>
+<li>staattiset hahmopotretit ja vahva mobiili-UI</li>
+</ul>
+<h3>Poista pilotista</h3>
+<ul>
+<li>oikeat uutisotsikot</li>
+<li>urheilu-API:t</li>
+<li>12 NPC:n yhtäaikainen päätöslooppi</li>
+<li>fine-tuning</li>
+<li>vector DB</li>
+<li>multi-provider-routing</li>
+<li>julkinen hahmoeditori</li>
+<li>native mobile</li>
+<li>mikropalvelujen lisääminen</li>
+<li>ääni ja video ennen retention-signaalia</li>
+</ul>
+<hr />
+<div class="sec-head" id="8-tavoitearkkitehtuuri"><span class="sec-index">08</span><h2>8. Tavoitearkkitehtuuri</h2></div>
+<h3>Kolme runtime-osaa riittää</h3>
+<ol>
+<li>
+<p><strong>App/API</strong></p>
+<ul>
+<li>public UI</li>
+<li>read API</li>
+<li>admin ja audience vote</li>
+</ul>
+</li>
+<li>
+<p><strong>Simulation worker</strong></p>
+<ul>
+<li>sim clock</li>
+<li>legal action generation</li>
+<li>policy/LLM decision</li>
+<li>event effects</li>
+<li>director</li>
+<li>content jobs</li>
+</ul>
+</li>
+<li>
+<p><strong>Postgres</strong></p>
+<ul>
+<li>run state</li>
+<li>world state</li>
+<li>append-only events</li>
+<li>decisions</li>
+<li>durable jobs/outbox</li>
+<li>posts</li>
+</ul>
+</li>
+</ol>
+<p>Redis voidaan jättää pois pilotista. Postgres-job queue <code>FOR UPDATE SKIP LOCKED</code> -mallilla riittää tähän volyymiin. Jos Redis säilyy, käytä Streams + consumer groups + ack + dead letter -jonoa.</p>
+<h3>Action loop</h3>
+<pre><code class="language-text">Havaitse sim clock + paikka + lähellä olevat NPC:t + goals
+  -&gt; engine tuottaa vain lailliset action-vaihtoehdot
+  -&gt; sääntöpolicy valitsee tavallisen toiminnan
+  -&gt; LLM valitsee vain korkean vaikutuksen tilanteissa
+  -&gt; engine validoi actionin
+  -&gt; engine päivittää statea ja tallentaa eventin
+  -&gt; renderer kirjoittaa julkaisun vain valituista eventeistä
+</code></pre>
+<p>LLM ei saa keksiä esineitä, rahaa tai tapahtunutta dialogia vapaana tekstinä. Se valitsee legal actionin ja täyttää rajatun payloadin.</p>
+<h3>Sisältöputki</h3>
+<p>Poista englanninkielinen draft ja sanankorvauskäännös. Nykyinen polku tekee ensin englanninkielisen Gemini-draftin, kääntää sanoja substring-replace-logiikalla ja pyytää Qwenia korjaamaan tekstin.</p>
+<p>Uusi polku:</p>
+<ul>
+<li>decision output: action, target, intent, emotion, private rationale</li>
+<li>engine event: faktat ja seuraukset</li>
+<li>renderer: yksi suomenkielinen pyyntö eventistä ja hahmon äänestä</li>
+<li>deterministic fallback: laadukas template, ei rikkinäistä LLM-outputia</li>
+</ul>
+<h3>Determinismi</h3>
+<p>Tallenna nämä jokaiseen runiin:</p>
+<ul>
+<li>sim seed</li>
+<li>engine-versio ja config hash</li>
+<li>ambient snapshot</li>
+<li>legal action set</li>
+<li>valittu action</li>
+<li>provider, model ja prompt version</li>
+<li>raw structured decision</li>
+</ul>
+<p>Replay käyttää tallennettuja päätöksiä. Uusi run samalla seedillä voi tehdä uuden generatiivisen version, mutta replay ei kutsu mallia.</p>
+<h3>Budjetti</h3>
+<p>Aseta kovat rajat per sim-päivä:</p>
+<ul>
+<li>action-LLM-kutsut, esimerkiksi enintään 30</li>
+<li>render-kutsut, esimerkiksi enintään 25</li>
+<li>FEED per NPC, esimerkiksi enintään 2</li>
+<li>CHAT burst ja thread depth</li>
+<li>token- ja eurobudjetti</li>
+<li>jonon maksimipituus</li>
+</ul>
+<p>Engine siirtää vähäarvoiset tapahtumat deterministic policylle tai template-renderöintiin.</p>
+<hr />
+<div class="sec-head" id="9-neljan-viikon-roadmap"><span class="sec-index">09</span><h2>9. Neljän viikon roadmap</h2></div>
+<h3>Vaihe 0: turva ja jatkamispäätöksen rajaus, 1-2 päivää</h3>
+<p><strong>Tulos:</strong> repo voidaan ajaa turvallisesti ja kaikki tietävät, mitä pilotilla mitataan.</p>
+<ul>
+<li>peru leaked Gemini key</li>
+<li>poista tai rewrite remote-feature-branch</li>
+<li>valitse yksi kanoninen main</li>
+<li>tagaa nykytila <code>prototype-2025-12</code></li>
+<li>tee <code>.env.example</code> ajettavaksi</li>
+<li>vaihda supported GA -malliin</li>
+<li>sulje infra-portit</li>
+<li>korjaa migraatiot ja ota Alembic tai yksinkertainen schema version -runner</li>
+<li>lisää <code>pyproject.toml</code>, lockfile, Ruff, pytest ja secret scan</li>
+<li>tee GitHub Actions: lint, unit, fake-provider E2E, Docker build</li>
+</ul>
+<p><strong>Gate:</strong> yksi komento käynnistää fake-provider-stackin tyhjästä ja CI menee vihreäksi.</p>
+<h3>Vaihe 1: engine vertical slice, 4-5 päivää</h3>
+<p><strong>Tulos:</strong> kuusi hahmoa tekee maailmaa muuttavia päätöksiä.</p>
+<ul>
+<li>tee <code>runs</code>, <code>agent_state</code>, <code>inventory</code> ja durable <code>jobs/outbox</code></li>
+<li>persistoi sim clock ja tick</li>
+<li>toteuta 6 actionia: MOVE, TALK, HELP, BORROW, RETURN, APOLOGIZE</li>
+<li>generoi legal action set sääntöjen perusteella</li>
+<li>käytä NPC:n routinea, goalia ja relationshipia valintaan</li>
+<li>rajaa event-katalogi 8-12 runtime-eventtiin</li>
+<li>tee kaksi konfliktikaarta: toripaikka ja peräkärry</li>
+<li>kirjoita replay-testi, jossa event log ja state hash täsmäävät</li>
+</ul>
+<p><strong>Gate:</strong> seitsemän sim-päivän ajo päättyy ilman duplikaatteja, kadonneita jobeja tai mahdottomia actioneita.</p>
+<h3>Vaihe 2: sisältö ja eval, 4-5 päivää</h3>
+<p><strong>Tulos:</strong> eventit muuttuvat tunnistettavaksi suomeksi ilman toistospämmiä.</p>
+<ul>
+<li>korvaa kaksimallinen English-draft-polku yhdellä rendererillä</li>
+<li>lisää deterministic fallbackit</li>
+<li>tee päivittäinen NEWS-kooste</li>
+<li>tee muistot tapahtuman faktoista ja seurauksesta</li>
+<li>tee eval-setti 50 tilanteelle</li>
+<li>mittaa personaerottuvuus, faktat, toisto, syy-seuraus, turvallisuus ja kieli</li>
+<li>tee human review -näkymä hyväksy/hylkää/korjaa</li>
+</ul>
+<p><strong>Gate:</strong> vähintään 80 % human review -näytteistä saa arvosanan 4/5 faktatarkkuudessa ja hahmon äänessä. Vakavia ristiriitoja alle 5 %.</p>
+<h3>Vaihe 3: katsojan vertical slice, 4-5 päivää</h3>
+<p><strong>Tulos:</strong> ulkopuolinen käyttäjä voi seurata kylää puhelimella.</p>
+<ul>
+<li>mobiili-first FEED, CHAT ja NEWS</li>
+<li>hahmoprofiilit ja suhteet</li>
+<li>&quot;Aiemmin Koivulahdessa&quot; -kooste</li>
+<li>threadit</li>
+<li>päivän yleisöäänestys</li>
+<li>kevyt admin: pause, inject opportunity, reject post</li>
+<li>analytics: session, return, character view, vote</li>
+</ul>
+<p><strong>Gate:</strong> viisi ulkopuolista testikäyttäjää ymmärtää ilman ohjeita, kuka riitelee, miksi ja mitä he voivat tehdä.</p>
+<h3>Vaihe 4: seitsemän päivän suljettu kausi, 7 päivää</h3>
+<p><strong>Tulos:</strong> oikea jatka/lopeta-päätös.</p>
+<ul>
+<li>kutsu 20-50 testaajaa</li>
+<li>julkaise yksi uusi sim-päivä päivässä</li>
+<li>pidä kustannuskatto</li>
+<li>kerää retention, vote rate ja lyhyt käyttäjähaastattelu</li>
+<li>älä korjaa tarinaa käsin muuten kuin safety/editorial vetoilla</li>
+</ul>
+<p><strong>Jatka, jos:</strong></p>
+<ul>
+<li>vähintään 20 oikeaa testaajaa aloittaa</li>
+<li>vähintään 40 % palaa kolmantena päivänä</li>
+<li>vähintään 30 % osallistuu vähintään yhteen äänestykseen</li>
+<li>vähintään 60 % osaa nimetä yhden hahmon ja keskeneräisen konfliktin</li>
+<li>vähintään 50 % sanoo haluavansa toisen kauden</li>
+<li>kustannus pysyy asetetussa päiväbudjetissa</li>
+</ul>
+<p><strong>Arkistoi tai muuta formaattia, jos:</strong></p>
+<ul>
+<li>D3-retention jää alle 25 % kahden sisältöiteraation jälkeen</li>
+<li>käyttäjät kuvaavat kokemusta &quot;AI:t juttelevat keskenään&quot; eivätkä muista hahmoja</li>
+<li>konfliktien seuraukset vaativat jatkuvaa käsikirjoittajan korjausta</li>
+<li>viihdearvo syntyy vain noveltystä</li>
+</ul>
+<hr />
+<div class="sec-head" id="10-tyomaara-ja-uudelleenkaytto"><span class="sec-index">10</span><h2>10. Työmäärä ja uudelleenkäyttö</h2></div>
+<h3>Käytä uudelleen</h3>
+<ul>
+<li>12 NPC-profiilia, joista valitaan 6</li>
+<li>paikat</li>
+<li>event-first-periaate</li>
+<li>event-, post- ja relationship-skeemojen idea</li>
+<li>osa impact scoringista</li>
+<li>gatewayn request-lockit</li>
+<li>monitorin käyttöliittymäideat</li>
+<li>Day 1 -kaaret sisältöaihioina</li>
+</ul>
+<h3>Kirjoita uudelleen tai pura</h3>
+<ul>
+<li><code>runner.py</code> vastuualueisiin</li>
+<li>decision-schema</li>
+<li>durable job pipeline</li>
+<li>sim clock ja replay</li>
+<li>workerin English draft + keyword translation</li>
+<li>migration handling</li>
+<li>API:n admin-stubit</li>
+<li>CORS ja verkotus</li>
+<li>testit</li>
+</ul>
+<p>Arviolta 30-40 prosenttia nykyisestä koodista kannattaa käyttää sellaisenaan tai pienin muutoksin. Sisältödatasta voi käyttää enemmän. Repoa ei tarvitse heittää pois, mutta core-loopin paikkaaminen nykyisen 1 305-rivisen runnerin sisään kasvattaa velkaa nopeasti.</p>
+<hr />
+<div class="sec-head" id="11-priorisoitu-tehtavalista"><span class="sec-index">11</span><h2>11. Priorisoitu tehtävälista</h2></div>
+<h3>P0, ennen seuraavaa normaalia ajoa</h3>
+<ol>
+<li>Revoke vanha leaked Gemini key.</li>
+<li>Siivoa remote-branch ja valitse kanoninen main.</li>
+<li>Vaihda suljettu Gemini-malli nykyiseen GA-malliin.</li>
+<li>Korjaa <code>.env.example</code>.</li>
+<li>Sulje Postgres, Redis, llama.cpp ja gateway Docker-verkon sisään.</li>
+<li>Korjaa migraatioiden oikeudet ja versionointi.</li>
+<li>Laita decision-service oletuksena pois, kunnes kapasiteetti ja provider health on korjattu.</li>
+</ol>
+<h3>P1, ensimmäinen rakennusviikko</h3>
+<ol>
+<li>Lisää fake-provider E2E CI:hin.</li>
+<li>Tee durable jobs ja idempotency keys.</li>
+<li>Persistoi run, sim clock ja config hash.</li>
+<li>Tee kuuden actionin legal action loop.</li>
+<li>Poista oikeat uutiset pilotista.</li>
+<li>Rajaa casti kuuteen hahmoon.</li>
+</ol>
+<h3>P2, ennen käyttäjäpilottia</h3>
+<ol>
+<li>Tee mobile UI.</li>
+<li>Lisää daily digest ja audience vote.</li>
+<li>Tee human-rated eval.</li>
+<li>Lisää moderointi ja editorial veto.</li>
+<li>Instrumentoi retention ja kustannus.</li>
+</ol>
+<hr />
+<div class="sec-head" id="12-paatos-vaihtoehdoittain"><span class="sec-index">12</span><h2>12. Päätös vaihtoehdoittain</h2></div>
+<h3>Vaihtoehto A: jatka nykyistä roadmapia</h3>
+<p><strong>Päätös: ei.</strong> Se lisää digestin, ambient-API:t, muistitiivistykset ja lisää eventtejä ennen kuin core autonomy tai käyttäjäkokemus toimii.</p>
+<h3>Vaihtoehto B: täydellinen rewrite</h3>
+<p><strong>Päätös: ei heti.</strong> Sisältödata ja event-first-ajattelu ovat arvokkaita. Tee ensin pieni vertical slice nykyiseen repoon selkeillä uusilla moduleilla. Älä jatka vanhan runnerin kasvattamista.</p>
+<h3>Vaihtoehto C: neljän viikon pivot-pilotti</h3>
+<p><strong>Päätös: kyllä.</strong> Tämä on suositus. Bounded kokeilu voi tuottaa joko toimivan formaatin tai halvan lopetuspäätöksen.</p>
+<h3>Vaihtoehto D: arkistoi nyt</h3>
+<p><strong>Päätös: perusteltu, jos tavoitteena oli yleinen AI village -alusta tai nopea kuluttajabisnes.</strong> Kilpailu ja puuttuva UI tekevät siitä huonon sijoituksen. IsoRatas-demo ja suomalainen live-saippua antavat kuitenkin yhdelle rajatulle pilotille riittävän syyn.</p>
+<hr />
+<div class="sec-head" id="13-lahteet"><span class="sec-index">13</span><h2>13. Lähteet</h2></div>
+<p>Tarkistettu 16.7.2026.</p>
+<ol>
+<li>Google Gemini 2.0 Flash shutdown: <a class="external" href="https://ai.google.dev/gemini-api/docs/models/gemini-2.0-flash" target="_blank" rel="noreferrer">https://ai.google.dev/gemini-api/docs/models/gemini-2.0-flash</a></li>
+<li>a16z AI Town: <a class="external" href="https://github.com/a16z-infra/ai-town" target="_blank" rel="noreferrer">https://github.com/a16z-infra/ai-town</a></li>
+<li>Stanford Generative Agents: <a class="external" href="https://github.com/joonspk-research/generative_agents" target="_blank" rel="noreferrer">https://github.com/joonspk-research/generative_agents</a></li>
+<li>Google DeepMind Concordia: <a class="external" href="https://github.com/google-deepmind/concordia" target="_blank" rel="noreferrer">https://github.com/google-deepmind/concordia</a></li>
+<li>Project Sid: <a class="external" href="https://arxiv.org/abs/2411.00114" target="_blank" rel="noreferrer">https://arxiv.org/abs/2411.00114</a></li>
+<li>Chirper.ai research: <a class="external" href="https://arxiv.org/abs/2504.10286" target="_blank" rel="noreferrer">https://arxiv.org/abs/2504.10286</a></li>
+<li>AI Society on Steam: <a class="external" href="https://store.steampowered.com/app/4468180/AI_Society/" target="_blank" rel="noreferrer">https://store.steampowered.com/app/4468180/AI_Society/</a></li>
+<li>Showrunner launch coverage: <a class="external" href="https://www.forbes.com/sites/charliefink/2025/07/30/amazon-backs-showrunners-ai-streaming-platform-as-it-launches-satirical-series-exit-valley/" target="_blank" rel="noreferrer">https://www.forbes.com/sites/charliefink/2025/07/30/amazon-backs-showrunners-ai-streaming-platform-as-it-launches-satirical-series-exit-valley/</a></li>
+</ol>
+<p>GitHub-tähtimäärät ja Steam-arvostelujen määrät ovat auditointipäivän snapshotteja, eivät kysyntäennusteita.</p>
+<hr />
+<div class="sec-head" id="lopullinen-suositus"><span class="sec-index">§</span><h2>Lopullinen suositus</h2></div>
+<p><strong>Pidä repo. Jäädytä nykyinen roadmap. Korjaa P0-asiat ja rakenna neljän viikon live-saippua-pilotti.</strong></p>
+<p>Jos käyttäjät palaavat hahmojen ja keskeneräisten konfliktien takia, projekti ansaitsee toisen kauden. Jos he palaavat vain katsomaan AI-demonstratiota kerran, arkistoi kuluttajatuote ja julkaise työ IsoRatas-case studyna.</p>
+
+</article>
+</main>
+</div>
+<script>
+(function() {
+  const toc = document.getElementById('toc');
+  const links = Array.from(toc.querySelectorAll('a'));
+  const entries = links.map(link => ({link, el: document.querySelector(link.getAttribute('href'))})).filter(x => x.el);
+  const observer = new IntersectionObserver(items => {
+    items.forEach(item => {
+      if (!item.isIntersecting) return;
+      links.forEach(link => link.classList.remove('active'));
+      const hit = entries.find(x => x.el === item.target);
+      if (hit) {
+        hit.link.classList.add('active');
+        if (window.innerWidth <= 1050) hit.link.scrollIntoView({behavior:'smooth', block:'nearest', inline:'center'});
+      }
+    });
+  }, {rootMargin:'-8% 0px -84% 0px'});
+  entries.forEach(x => observer.observe(x.el));
+  links.forEach(link => link.addEventListener('click', event => {
+    event.preventDefault();
+    const el = document.querySelector(link.getAttribute('href'));
+    if (el) { el.scrollIntoView({behavior:'smooth', block:'start'}); history.replaceState(null, '', link.getAttribute('href')); }
+  }));
+})();
+</script>
+</body>
+</html>
